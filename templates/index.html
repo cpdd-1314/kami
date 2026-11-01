@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡密验证</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="page-content" class="blurred">
+    <header>
+      <h1>✨ 会员专区</h1>
+      <p>这里是受保护的内容区域，验证卡密后即可查看</p>
+    </header>
+    <main class="grid">
+      <div class="content-card"><h3>📄 精选资源</h3><p>这是解锁后的内容示例一。您可以在此放置任意受保护的页面内容。</p></div>
+      <div class="content-card"><h3>🎬 专属视频</h3><p>这是解锁后的内容示例二。支持文字、图片、视频等任意内容。</p></div>
+      <div class="content-card"><h3>📦 下载专区</h3><p>这是解锁后的内容示例三。管理后台可批量生成卡密。</p></div>
+    </main>
+  </div>
+
+  <div id="overlay">
+    <div class="modal" id="modal">
+      <div class="modal-icon">🔑</div>
+      <h2>请输入卡密</h2>
+      <p class="sub">验证通过后即可查看本页内容</p>
+      <input id="code-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off">
+      <button id="verify-btn">验 证</button>
+      <p id="msg"></p>
+    </div>
+  </div>
+
+<script>
+(function () {
+  var KEY = 'kami_unlocked_until';
+  var until = parseInt(localStorage.getItem(KEY) || '0', 10);
+  var expireAt = until > 0 ? until : null;
+  var valid = expireAt === 1 || (expireAt && expireAt > Date.now());
+  if (valid) unlock();
+
+  var input = document.getElementById('code-input'),
+      btn = document.getElementById('verify-btn'),
+      msg = document.getElementById('msg'),
+      overlay = document.getElementById('overlay'),
+      content = document.getElementById('page-content');
+
+  function unlock() {
+    overlay.style.display = 'none';
+    content.classList.remove('blurred');
+  }
+  function shake() {
+    input.style.borderColor = '#ef4444';
+    var modal = document.getElementById('modal'), n = 0;
+    var t = setInterval(function () {
+      n++; modal.style.transform = 'translateX(' + (n % 2 ? -7 : 7) + 'px)';
+      if (n > 5) { clearInterval(t); modal.style.transform = ''; }
+    }, 60);
+  }
+  function submit() {
+    var code = input.value.trim();
+    if (!code) { msg.textContent = '请输入卡密'; shake(); return; }
+    btn.disabled = true; btn.textContent = '验证中...';
+    fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'code=' + encodeURIComponent(code)
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) {
+        var exp = d.expire_at ? new Date(d.expire_at).getTime() : 1;
+        localStorage.setItem(KEY, String(exp));
+        msg.style.color = '#22c55e';
+        msg.textContent = '✓ ' + d.message;
+        setTimeout(unlock, 500);
+      } else {
+        msg.textContent = d.message || '验证失败';
+        shake();
+      }
+    })
+    .catch(function () { msg.textContent = '网络错误，请重试'; })
+    .finally(function () { btn.disabled = false; btn.textContent = '验 证'; });
+  }
+  btn.onclick = submit;
+  input.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
+  input.oninput = function () { input.style.borderColor = '#dcdff0'; msg.textContent = ''; };
+})();
+</script>
+</body>
+</html>

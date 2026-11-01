@@ -1,0 +1,54 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #a855f7 100%);
+  color: #1f2340;
+}
+
+/* 受保护内容区 */
+#page-content { max-width: 1000px; margin: 0 auto; padding: 60px 20px; transition: filter .4s; }
+#page-content.blurred { filter: blur(14px); pointer-events: none; user-select: none; }
+header h1 { color: #fff; font-size: 34px; text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,.2); }
+header p { color: rgba(255,255,255,.85); text-align: center; margin: 10px 0 40px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.content-card { background: rgba(255,255,255,.92); border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+.content-card h3 { margin-bottom: 8px; }
+.content-card p { color: #5a5f7d; font-size: 14px; line-height: 1.6; }
+
+/* 弹窗遮罩 */
+#overlay {
+  position: fixed; inset: 0; z-index: 999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.15);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.modal {
+  width: min(92vw, 400px);
+  background: #fff; border-radius: 16px; padding: 32px 28px;
+  box-shadow: 0 20px 60px rgba(80,60,180,.35);
+  text-align: center;
+}
+.modal-icon { font-size: 40px; }
+.modal h2 { margin: 10px 0 6px; font-size: 22px; }
+.modal .sub { margin: 0 0 18px; color: #8a8fa8; font-size: 13px; }
+.modal input {
+  width: 100%; padding: 12px 14px; border: 1.5px solid #dcdff0; border-radius: 10px;
+  font-size: 16px; letter-spacing: 2px; text-align: center; outline: none;
+  transition: border-color .2s;
+}
+.modal input:focus { border-color: #6366f1; }
+.modal button {
+  margin-top: 14px; width: 100%; padding: 12px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff; font-size: 16px; cursor: pointer; transition: opacity .2s;
+}
+.modal button:hover { opacity: .9; }
+.modal button:disabled { opacity: .6; cursor: wait; }
+#msg { min-height: 18px; margin-top: 12px; color: #ef4444; font-size: 13px; }
+
+/* 管理员登录 */
+.admin-body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+.login-wrap { width: 100%; display: flex; justify-content: center; }
+.login-wrap .modal { box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+.login-wrap input { text-align: left; letter-spacing: normal; margin-bottom: 12px; }

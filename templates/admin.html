@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理后台 - 卡密系统</title>
+<link rel="stylesheet" href="/static/admin.css">
+</head>
+<body>
+<div class="topbar">
+  <span class="logo">🔑 卡密管理后台</span>
+  <a href="/admin/export">导出 CSV</a>
+  <a href="/" target="_blank">查看前台</a>
+  <a href="/admin/logout" onclick="return false;" id="logout">退出</a>
+</div>
+
+<div class="wrap">
+  <div class="stat-grid">
+    <div class="stat"><b>{{ stats.total }}</b><span>卡密总数</span></div>
+    <div class="stat"><b class="c-green">{{ stats.unused }}</b><span>未使用</span></div>
+    <div class="stat"><b class="c-blue">{{ stats.used }}</b><span>已使用</span></div>
+    <div class="stat"><b class="c-red">{{ stats.expired }}</b><span>已过期</span></div>
+  </div>
+
+  <div class="panel">
+    <h3>批量生成卡密</h3>
+    <div class="gen-row">
+      <label>数量 <input id="g-count" type="number" value="10" min="1" max="500"></label>
+      <label>有效天数 <input id="g-days" type="number" value="30" min="0">（0=永久）</label>
+      <label>绑定网站 <input id="g-site" placeholder="留空=全网通用"></label>
+      <label>备注 <input id="g-note" placeholder="选填"></label>
+      <button id="g-btn">生成</button>
+    </div>
+    <pre id="g-result" hidden></pre>
+  </div>
+
+  <div class="panel">
+    <form method="get" class="filter-row">
+      <select name="status">
+        <option value="">全部状态</option>
+        <option value="unused" {% if status=='unused' %}selected{% endif %}>未使用</option>
+        <option value="used" {% if status=='used' %}selected{% endif %}>已使用</option>
+      </select>
+      <input name="q" value="{{ q }}" placeholder="搜索卡密/备注">
+      <button type="submit">筛选</button>
+    </form>
+    <table>
+      <thead><tr><th>卡密</th><th>状态</th><th>有效天数</th><th>到期时间</th><th>使用者</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for c in cards %}
+        <tr>
+          <td class="code">{{ c.code }}</td>
+          <td><span class="tag {{ 'tag-expired' if c.is_expired else ('tag-used' if c.status=='used' else 'tag-unused') }}">{{ c.status_text }}</span></td>
+          <td>{{ '永久' if c.duration_days==0 else c.duration_days ~ ' 天' }}</td>
+          <td>{{ c.expire_at or '—' }}</td>
+          <td>{{ c.used_by or '—' }}</td>
+          <td>{{ c.site_domain or '全网通用' }}</td>
+          <td>{{ c.note or '—' }}</td>
+          <td><button class="del" data-id="{{ c.id }}">删除</button></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="empty">暂无卡密，请先生成</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h3>接入的网站</h3>
+    {% if sites %}
+    <table>
+      <thead><tr><th>域名</th><th>登记时间</th></tr></thead>
+      <tbody>{% for s in sites %}<tr><td class="code">{{ s.domain }}</td><td>{{ s.created_at }}</td></tr>{% endfor %}</tbody>
+    </table>
+    {% else %}<p class="empty">暂无网站接入。在其他网站页面加入：<code>&lt;script src="本系统地址/embed.js"&gt;&lt;/script&gt;</code></p>{% endif %}
+  </div>
+</div>
+
+<script>
+document.getElementById('g-btn').onclick = function () {
+  var b = this; b.disabled = true;
+  var body = 'count=' + document.getElementById('g-count').value
+           + '&duration_days=' + document.getElementById('g-days').value
+           + '&site_domain=' + encodeURIComponent(document.getElementById('g-site').value)
+           + '&note=' + encodeURIComponent(document.getElementById('g-note').value);
+  fetch('/admin/generate', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) {
+        var pre = document.getElementById('g-result');
+        pre.hidden = false; pre.textContent = '已生成 ' + d.codes.length + ' 个卡密：\n' + d.codes.join('\n');
+        setTimeout(function () { location.reload(); }, 2500);
+      } else { alert(d.message); }
+      b.disabled = false;
+    });
+};
+document.querySelectorAll('.del').forEach(function (btn) {
+  btn.onclick = function () {
+    if (!confirm('确定删除该卡密？')) return;
+    fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+  };
+});
+document.getElementById('logout').onclick = function () {
+  document.cookie = 'kami_session=; Max-Age=0; path=/';
+  location.href = '/admin';
+};
+</script>
+</body>
+</html>
