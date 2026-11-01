@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>卡密验证</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #a855f7 100%);
+  color: #1f2340;
+}
+#page-content { max-width: 1000px; margin: 0 auto; padding: 60px 20px; transition: filter .4s; }
+#page-content.blurred { filter: blur(14px); pointer-events: none; user-select: none; }
+header h1 { color: #fff; font-size: 34px; text-align: center; text-shadow: 0 2px 10px rgba(0,0,0,.2); }
+header p { color: rgba(255,255,255,.85); text-align: center; margin: 10px 0 40px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+.content-card { background: rgba(255,255,255,.92); border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+.content-card h3 { margin-bottom: 8px; }
+.content-card p { color: #5a5f7d; font-size: 14px; line-height: 1.6; }
+#overlay {
+  position: fixed; inset: 0; z-index: 999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.15);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+}
+.modal {
+  width: min(92vw, 400px);
+  background: #fff; border-radius: 16px; padding: 32px 28px;
+  box-shadow: 0 20px 60px rgba(80,60,180,.35);
+  text-align: center;
+}
+.modal-icon { font-size: 40px; }
+.modal h2 { margin: 10px 0 6px; font-size: 22px; }
+.modal .sub { margin: 0 0 18px; color: #8a8fa8; font-size: 13px; }
+.modal input {
+  width: 100%; padding: 12px 14px; border: 1.5px solid #dcdff0; border-radius: 10px;
+  font-size: 16px; letter-spacing: 2px; text-align: center; outline: none; transition: border-color .2s;
+}
+.modal input:focus { border-color: #6366f1; }
+.modal button {
+  margin-top: 14px; width: 100%; padding: 12px; border: none; border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff; font-size: 16px; cursor: pointer;
+}
+.modal button:disabled { opacity: .6; cursor: wait; }
+#msg { min-height: 18px; margin-top: 12px; color: #ef4444; font-size: 13px; }
+</style>
+</head>
+<body>
+  <div id="page-content" class="blurred">
+    <header>
+      <h1>✨ 会员专区</h1>
+      <p>这里是受保护的内容区域，验证卡密后即可查看</p>
+    </header>
+    <main class="grid">
+      <div class="content-card"><h3>📄 精选资源</h3><p>这是解锁后的内容示例一。您可以在此放置任意受保护的页面内容。</p></div>
+      <div class="content-card"><h3>🎬 专属视频</h3><p>这是解锁后的内容示例二。支持文字、图片、视频等任意内容。</p></div>
+      <div class="content-card"><h3>📦 下载专区</h3><p>这是解锁后的内容示例三。编辑 cards.js 即可增删卡密。</p></div>
+    </main>
+  </div>
+
+  <div id="overlay">
+    <div class="modal" id="modal">
+      <div class="modal-icon">🔑</div>
+      <h2>请输入卡密</h2>
+      <p class="sub">验证通过后即可查看本页内容</p>
+      <input id="code-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off">
+      <button id="verify-btn">验 证</button>
+      <p id="msg"></p>
+    </div>
+  </div>
+
+<script src="cards.js"></script>
+<script>
+(function () {
+  var KEY = 'kami_static_unlock_until';
+
+  function findCard(code) {
+    code = (code || '').trim().toUpperCase();
+    for (var i = 0; i < (window.KAMI_CARDS || []).length; i++) {
+      if ((window.KAMI_CARDS[i].code || '').toUpperCase() === code) return window.KAMI_CARDS[i];
+    }
+    return null;
+  }
+
+  // 已解锁且未到期则直接解锁
+  try {
+    var saved = parseInt(localStorage.getItem(KEY) || '0', 10);
+    if (saved === 1 || saved > Date.now()) unlock();
+  } catch (e) {}
+
+  var input = document.getElementById('code-input'),
+      btn = document.getElementById('verify-btn'),
+      msg = document.getElementById('msg'),
+      overlay = document.getElementById('overlay'),
+      content = document.getElementById('page-content');
+
+  function unlock() { overlay.style.display = 'none'; content.classList.remove('blurred'); }
+  function shake() {
+    input.style.borderColor = '#ef4444';
+    var modal = document.getElementById('modal'), n = 0;
+    var t = setInterval(function () {
+      n++; modal.style.transform = 'translateX(' + (n % 2 ? -7 : 7) + 'px)';
+      if (n > 5) { clearInterval(t); modal.style.transform = ''; }
+    }, 60);
+  }
+  btn.onclick = function () {
+    var code = input.value.trim();
+    if (!code) { msg.textContent = '请输入卡密'; shake(); return; }
+    var card = findCard(code);
+    if (!card) { msg.textContent = '卡密不存在，请检查输入'; shake(); return; }
+    var days = parseInt(card.days, 10) || 0;
+    try {
+      localStorage.setItem(KEY, days > 0 ? String(Date.now() + days * 86400000) : '1');
+    } catch (e) {}
+    msg.style.color = '#22c55e';
+    msg.textContent = days > 0 ? '✓ 验证成功，有效期 ' + days + ' 天' : '✓ 验证成功，永久有效';
+    setTimeout(unlock, 500);
+  };
+  document.getElementById('verify-btn').onkeydown = null;
+  input.onkeydown = function (e) { if (e.key === 'Enter') btn.onclick(); };
+  input.oninput = function () { input.style.borderColor = '#dcdff0'; msg.textContent = ''; };
+})();
+</script>
+</body>
+</html>
