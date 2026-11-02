@@ -180,17 +180,16 @@ document.getElementById('p-btn').onclick = function () {
   fetch('/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (d.ok) { alert(d.message); location.href = '/admin'; }
+      if (d.ok) { uiAlert(d.message, '修改成功', function () { location.href = '/admin'; }); }
       else { msg.textContent = d.message; b.disabled = false; }
     });
 };
 </script>
 <style>
-.ui-mask { position:fixed; inset:0; z-index:9999; display:flex; align-items:center; justify-content:center; background:rgba(15,18,45,.45); }
-.ui-mask[hidden] { display:none !important; }
-#ui-modal input[hidden], #ui-modal button[hidden] { display:none !important; }
+.ui-mask { position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center; background:rgba(15,18,45,.45); }
+.ui-mask.show { display:flex; }
 </style>
-<div id="ui-modal" class="ui-mask">
+<div id="ui-modal" class="ui-mask" hidden>
   <div style="width:min(92vw,420px);background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:system-ui,sans-serif;">
     <h3 id="ui-title" style="margin:0 0 10px;font-size:17px;color:#1f2340;">提示</h3>
     <input id="ui-input" hidden style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;">
@@ -202,15 +201,16 @@ document.getElementById('p-btn').onclick = function () {
   </div>
 </div>
 <script>
+function uiShow() { document.getElementById('ui-modal').classList.add('show'); }
+function uiHide() { document.getElementById('ui-modal').classList.remove('show'); }
 function uiAlert(text, title, cb) {
-  var m = document.getElementById('ui-modal');
   document.getElementById('ui-title').textContent = title || '提示';
   document.getElementById('ui-text').textContent = text || '';
-  document.getElementById('ui-input').hidden = true;
+  var inp = document.getElementById('ui-input'); inp.hidden = true;
   document.getElementById('ui-cancel').hidden = true;
   document.getElementById('ui-ok').textContent = '确定';
-  m.hidden = false;
-  document.getElementById('ui-ok').onclick = function () { m.hidden = true; if (cb) cb(); };
+  document.getElementById('ui-ok').onclick = function () { uiHide(); if (cb) cb(); };
+  uiShow();
 }
 function uiPrompt(text, title, value, cb) {
   var m = document.getElementById('ui-modal'), inp = document.getElementById('ui-input');
@@ -219,21 +219,20 @@ function uiPrompt(text, title, value, cb) {
   inp.hidden = false; inp.value = value || '';
   document.getElementById('ui-cancel').hidden = false;
   document.getElementById('ui-ok').textContent = '确定';
-  m.hidden = false;
+  uiShow();
   inp.select();
-  document.getElementById('ui-ok').onclick = function () { m.hidden = true; cb(inp.value); };
-  document.getElementById('ui-cancel').onclick = function () { m.hidden = true; };
+  document.getElementById('ui-ok').onclick = function () { uiHide(); cb(inp.value); };
+  document.getElementById('ui-cancel').onclick = function () { uiHide(); };
 }
 function uiConfirm(text, title, cb) {
-  var m = document.getElementById('ui-modal');
   document.getElementById('ui-title').textContent = title || '确认';
   document.getElementById('ui-text').textContent = text;
   document.getElementById('ui-input').hidden = true;
   document.getElementById('ui-cancel').hidden = false;
   document.getElementById('ui-ok').textContent = '确定';
-  m.hidden = false;
-  document.getElementById('ui-ok').onclick = function () { m.hidden = true; cb(true); };
-  document.getElementById('ui-cancel').onclick = function () { m.hidden = true; cb(false); };
+  uiShow();
+  document.getElementById('ui-ok').onclick = function () { uiHide(); cb(true); };
+  document.getElementById('ui-cancel').onclick = function () { uiHide(); cb(false); };
 }
 </script>
 
