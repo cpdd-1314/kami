@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理后台 - 卡密系统</title>
-<link rel="stylesheet" href="/static/admin.css">
+<link rel="stylesheet" href="/static/admin.css?v=7">
 </head>
 <body>
 <div class="topbar">
@@ -281,6 +281,8 @@
   try { savedPage = sessionStorage.getItem('kami_page'); } catch (e) {}
   if (/[?&]q=/.test(location.search)) showPage('sec-cards');
   else showPage(savedPage && PAGES.indexOf(savedPage) >= 0 ? savedPage : 'sec-stats');
+  // 桌面端左侧栏常驻：直接移除 hidden，不依赖 CSS
+  if (window.innerWidth > 720) document.getElementById('drawer').hidden = false;
   var menuAdd = document.getElementById('menu-add-site');
   if (menuAdd) menuAdd.onclick = function (e) {
     e.preventDefault();
