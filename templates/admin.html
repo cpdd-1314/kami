@@ -115,12 +115,11 @@ document.getElementById('g-btn').onclick = function () {
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (d.ok) {
-        var pre = document.getElementById('g-result');
-        pre.hidden = false; pre.textContent = '已生成 ' + d.codes.length + ' 个卡密：\n' + d.codes.join('\n');
-        setTimeout(function () { location.reload(); }, 2500);
-      } else { uiAlert(d.message, '生成失败'); }
+        uiAlert('已生成 ' + d.codes.length + ' 个卡密：\n' + d.codes.join('\n'), '生成成功', function () { location.reload(); });
+      } else { uiAlert(d.message || '生成失败', '生成失败'); }
       b.disabled = false;
-    });
+    })
+    .catch(function () { uiAlert('网络错误，请重试', '请求失败'); b.disabled = false; });
 };
 document.querySelectorAll('.del').forEach(function (btn) {
   btn.onclick = function () {
@@ -182,15 +181,15 @@ document.getElementById('p-btn').onclick = function () {
   </div>
 </div>
 <script>
-function uiAlert(text, title) {
+function uiAlert(text, title, cb) {
   var m = document.getElementById('ui-modal');
   document.getElementById('ui-title').textContent = title || '提示';
-  document.getElementById('ui-text').textContent = text;
+  document.getElementById('ui-text').textContent = text || '';
   document.getElementById('ui-input').hidden = true;
   document.getElementById('ui-cancel').hidden = true;
   document.getElementById('ui-ok').textContent = '确定';
   m.hidden = false;
-  document.getElementById('ui-ok').onclick = function () { m.hidden = true; };
+  document.getElementById('ui-ok').onclick = function () { m.hidden = true; if (cb) cb(); };
 }
 function uiPrompt(text, title, value, cb) {
   var m = document.getElementById('ui-modal'), inp = document.getElementById('ui-input');
