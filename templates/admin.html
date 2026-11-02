@@ -53,6 +53,12 @@
         </select>
       </label>
       <label>备注 <input id="g-note" placeholder="选填"></label>
+      <label>设备限制
+        <select id="g-dev">
+          <option value="0">仅限一台设备（默认）</option>
+          <option value="1">不限设备</option>
+        </select>
+      </label>
       <button id="g-btn">生成</button>
     </div>
     <pre id="g-result" hidden></pre>
@@ -294,7 +300,8 @@ document.getElementById('g-btn').onclick = function () {
   var body = 'count=' + document.getElementById('g-count').value
            + '&duration_days=' + document.getElementById('g-days').value
            + '&site_domain=' + encodeURIComponent(document.getElementById('g-site').value)
-           + '&note=' + encodeURIComponent(document.getElementById('g-note').value);
+           + '&note=' + encodeURIComponent(document.getElementById('g-note').value)
+           + '&multi_device=' + document.getElementById('g-dev').value;
   fetch('/admin/generate', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
     .then(function (r) { return r.json(); })
     .then(function (d) {

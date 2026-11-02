@@ -50,6 +50,15 @@ def init_db():
         );
         """
     )
+    # 旧库升级：设备绑定字段
+    for col, ddl in (
+        ("device", "ALTER TABLE cards ADD COLUMN device TEXT"),
+        ("multi_device", "ALTER TABLE cards ADD COLUMN multi_device INTEGER NOT NULL DEFAULT 0"),
+    ):
+        try:
+            conn.execute(ddl)
+        except Exception:
+            pass
     # 默认管理员 admin / admin123
     if not conn.execute("SELECT 1 FROM admins LIMIT 1").fetchone():
         conn.execute(
@@ -85,15 +94,15 @@ def generate_code() -> str:
             return code
 
 
-def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None) -> list[str]:
+def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None, multi_device: bool = False) -> list[str]:
     conn = get_conn()
     codes = []
     now = datetime.now().isoformat(timespec="seconds")
     for _ in range(min(max(count, 1), 500)):
         code = generate_code()
         conn.execute(
-            "INSERT INTO cards (code, status, duration_days, created_at, site_domain, note) VALUES (?,?,?,?,?,?)",
-            (code, "unused", duration_days, now, site_domain, note),
+            "INSERT INTO cards (code, status, duration_days, created_at, site_domain, note, multi_device) VALUES (?,?,?,?,?,?,?)",
+            (code, "unused", duration_days, now, site_domain, note, 1 if multi_device else 0),
         )
         codes.append(code)
     conn.commit()
@@ -105,7 +114,19 @@ def create_cards(count: int, duration_days: int, note: str = "", site_domain: st
     except Exception:
         pass
 
-def check_card(code: str, domain: str | None = None):
+def _device_ok(row, device: str):
+    """设备限制：multi_device=0 时只能在绑定的设备上使用。返回 None 或错误元组"""
+    if row["multi_device"]:
+        return None
+    bound = row["device"]
+    if not bound or not device:
+        return None  # 无设备信息（如老版本客户端）不拦截
+    if bound != device:
+        return False, "该卡密已绑定其他设备，无法在此设备使用", None, "device"
+    return None
+
+
+def check_card(code: str, domain: str | None = None, device: str = ""):
     """回访校验（不激活、不扣次数）。返回 (ok, message, expire_at, key)"""
     code = (code or "").strip().upper()
     conn = get_conn()
@@ -116,6 +137,9 @@ def check_card(code: str, domain: str | None = None):
     if row["site_domain"] and domain and row["site_domain"] != domain:
         return False, f"该卡密仅限 {row['site_domain']} 使用", None, "limit"
     if row["status"] == "used":
+        bad = _device_ok(row, device)
+        if bad:
+            return bad
         exp = row["expire_at"]
         if not exp:
             return True, "永久有效", None, "ok"
@@ -128,7 +152,7 @@ def check_card(code: str, domain: str | None = None):
     return False, "卡密未激活", None, "notyet"
 
 
-def verify_card(code: str, user: str = "", domain: str | None = None):
+def verify_card(code: str, user: str = "", domain: str | None = None, device: str = ""):
     code = (code or "").strip().upper()
     conn = get_conn()
     row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
@@ -141,6 +165,10 @@ def verify_card(code: str, user: str = "", domain: str | None = None):
         return False, f"该卡密仅限 {row['site_domain']} 使用", None, "limit"
     now = datetime.now()
     if row["status"] == "used":
+        bad = _device_ok(row, device)
+        if bad:
+            conn.close()
+            return bad
         exp = row["expire_at"]
         if exp:
             try:
@@ -158,8 +186,9 @@ def verify_card(code: str, user: str = "", domain: str | None = None):
         else None
     )
     conn.execute(
-        "UPDATE cards SET status='used', used_at=?, expire_at=?, used_by=?, site_domain=COALESCE(?, site_domain) WHERE id=?",
-        (now.isoformat(timespec="seconds"), expire_at, user, domain, row["id"]),
+        "UPDATE cards SET status='used', used_at=?, expire_at=?, used_by=?, site_domain=COALESCE(?, site_domain), device=COALESCE(?, device) WHERE id=?",
+        (now.isoformat(timespec="seconds"), expire_at, user, domain,
+         (device or user or None) if not row["multi_device"] else None, row["id"]),
     )
     # 登记接入网站
     if domain:

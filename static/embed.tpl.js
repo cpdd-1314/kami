@@ -79,11 +79,19 @@ function msgText(key, raw) {
     setTimeout(function () { t.remove(); }, 3000);
   }
 
+  function devId() {
+    try {
+      var k = 'kami_device';
+      var v = localStorage.getItem(k);
+      if (!v) { v = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, v); }
+      return v;
+    } catch (e) { return ''; }
+  }
   function post(url, code, cb) {
     fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) + '&lang=' + LANG
+      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) + '&lang=' + LANG + '&device=' + encodeURIComponent(devId())
     }).then(function (r) { return r.json(); }).then(cb)
       .catch(function () { cb({ ok: false, message: tr('net'), key: 'net' }); });
   }

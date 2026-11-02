@@ -115,11 +115,19 @@
       modal = document.getElementById('modal');
 
   btn.textContent = tr('btn');
+  function devId() {
+    try {
+      var k = 'kami_device';
+      var v = localStorage.getItem(k);
+      if (!v) { v = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, v); }
+      return v;
+    } catch (e) { return ''; }
+  }
   function call(api, code, cb) {
     fetch('/api/' + api, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) + '&lang=' + LANG
+      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) + '&lang=' + LANG + '&device=' + encodeURIComponent(devId())
     })
     .then(function (r) { return r.json(); }).then(cb)
     .catch(function () { cb({ ok: false, message: 'net', key: 'net' }); });

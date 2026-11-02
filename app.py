@@ -96,7 +96,7 @@ async def site_page(token: str, request: Request):
 
 
 @app.post("/api/verify")
-async def verify(request: Request, code: str = Form(""), site: str = Form("")):
+async def verify(request: Request, code: str = Form(""), site: str = Form(""), device: str = Form("")):
     ip = client_ip(request)
     if not check_rate(ip):
         return JSONResponse({"ok": False, "message": "尝试过于频繁，请稍后再试", "key": "rate"}, status_code=429)
@@ -105,19 +105,19 @@ async def verify(request: Request, code: str = Form(""), site: str = Form("")):
     if not domain and origin:
         from urllib.parse import urlparse
         domain = urlparse(origin).netloc or None
-    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=domain)
+    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=domain, device=device)
     return {"ok": ok, "message": message, "expire_at": expire_at, "key": key}
 
 
 @app.post("/api/check")
-async def check(request: Request, code: str = Form(""), site: str = Form("")):
+async def check(request: Request, code: str = Form(""), site: str = Form(""), device: str = Form("")):
     """回访校验：不激活卡密，仅检查有效性（过期则要求重新输入）"""
     origin = request.headers.get("origin") or request.headers.get("referer") or ""
     domain = site.strip() or None
     if not domain and origin:
         from urllib.parse import urlparse
         domain = urlparse(origin).netloc or None
-    ok, message, expire_at, key = db.check_card(code, domain=domain)
+    ok, message, expire_at, key = db.check_card(code, domain=domain, device=device)
     return {"ok": ok, "message": message, "expire_at": expire_at, "key": key}
 
 
@@ -141,10 +141,10 @@ async def app_verify(request: Request):
     ip = client_ip(request)
     if not check_rate(ip):
         return JSONResponse({"ok": False, "key": "rate", "message": "尝试过于频繁，请稍后再试"}, status_code=429)
-    code, app_id = await _app_args(request)
+    code, app_id, dev = await _app_args(request)
     if not app_id:
         return JSONResponse({"ok": False, "key": "invalid", "message": "缺少 app 参数"}, status_code=400)
-    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=app_id)
+    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=app_id, device=dev)
     return _app_resp(ok, key, expire_at, message)
 
 
@@ -156,17 +156,18 @@ async def app_check_preflight():
 @app.post("/api/app/check")
 async def app_check(request: Request):
     """App 每次启动校验：不激活、不扣时长，过期则返回 ok=false"""
-    code, app_id = await _app_args(request)
+    code, app_id, dev = await _app_args(request)
     if not app_id:
         return JSONResponse({"ok": False, "key": "invalid", "message": "缺少 app 参数"}, status_code=400)
-    ok, message, expire_at, key = db.check_card(code, domain=app_id)
+    ok, message, expire_at, key = db.check_card(code, domain=app_id, device=dev)
     return _app_resp(ok, key, expire_at, message)
 
 
-async def _app_args(request: Request) -> tuple[str, str]:
-    """从 Header / JSON / 表单中取出卡密与 App 标识"""
+async def _app_args(request: Request) -> tuple[str, str, str]:
+    """从 Header / JSON / 表单中取出卡密、App 标识与设备标识"""
     code = request.headers.get("x-kami-code") or ""
     app_id = request.headers.get("x-kami-app") or ""
+    dev = request.headers.get("x-kami-device") or ""
     ctype = (request.headers.get("content-type") or "").lower()
     if "json" in ctype:
         try:
@@ -176,14 +177,16 @@ async def _app_args(request: Request) -> tuple[str, str]:
         if isinstance(body, dict):
             code = code or str(body.get("code") or "")
             app_id = app_id or str(body.get("app") or body.get("site") or "")
+            dev = dev or str(body.get("device") or "")
     else:
         try:
             form = await request.form()
             code = code or str(form.get("code") or "")
             app_id = app_id or str(form.get("app") or form.get("site") or "")
+            dev = dev or str(form.get("device") or "")
         except Exception:
             pass
-    return (code or "").strip().upper(), db.normalize_domain(app_id)
+    return (code or "").strip().upper(), db.normalize_domain(app_id), (dev or "").strip()
 
 
 def _app_resp(ok: bool, key: str, expire_at, message: str) -> JSONResponse:
@@ -319,6 +322,7 @@ async def generate(
     duration_days: int = Form(0),
     note: str = Form(""),
     site_domain: str = Form(""),
+    multi_device: int = Form(0),
 ):
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
@@ -328,7 +332,7 @@ async def generate(
             {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先在「添加网站」中登记"},
             status_code=400,
         )
-    codes = db.create_cards(count, duration_days, note, site_domain or None)
+    codes = db.create_cards(count, duration_days, note, site_domain or None, multi_device=bool(multi_device))
     return {"ok": True, "codes": codes}
 
 
