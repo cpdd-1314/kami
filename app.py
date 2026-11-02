@@ -13,6 +13,19 @@ import database as db
 import snippets
 import backup
 
+
+def base_url(request: Request) -> str:
+    """对外可访问的基础地址。
+
+    Render 等平台部署在反向代理后面，request.base_url 可能是容器内部地址
+    （如 http://0.0.0.0:10000），必须优先使用代理转发的 X-Forwarded-* 头。
+    """
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    host = (request.headers.get("x-forwarded-host")
+            or request.headers.get("host")
+            or request.url.netloc)
+    return f"{proto}://{host}".rstrip("/")
+
 BASE_DIR = Path(__file__).parent
 app = FastAPI(title="卡密系统")
 app.add_middleware(
@@ -228,7 +241,7 @@ def embed_template() -> str:
 @app.get("/embed.js")
 async def embed_js(request: Request):
     import json
-    base = str(request.base_url).rstrip("/")
+    base = base_url(request)
     site = request.query_params.get("site") or ""
     st = db.site_settings(site or None)
     t = dict(db.THEME_DEFAULT)  # 弹窗样式系统统一，文案由 embed.tpl.js 按语言翻译
@@ -294,7 +307,7 @@ async def dashboard(request: Request, kami_session: str | None = Cookie(None)):
             "sites": db.list_sites(),
             "status": status or "",
             "q": q or "",
-            "base": str(request.base_url).rstrip("/"),
+            "base": base_url(request),
         },
     )
 
@@ -365,7 +378,7 @@ async def admin_site_link(site_id: int, request: Request, kami_session: str | No
     if not r:
         return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
     domain, tok = r
-    base = str(request.base_url).rstrip("/")
+    base = base_url(request)
     return {"ok": True, "domain": domain, "url": f"{base}/s/{tok}"}
 
 
@@ -392,7 +405,7 @@ async def admin_site_add(
     ok, msg, row = db.add_site(domain, note, unlock_mode or None, lang)
     if not ok:
         return JSONResponse({"ok": False, "message": msg}, status_code=400)
-    base = str(request.base_url).rstrip("/")
+    base = base_url(request)
     r = db.site_token(row["id"])
     link = f"{base}/s/{r[1]}" if r else ""
     return {
@@ -416,7 +429,7 @@ async def admin_site_code(site_id: int, request: Request, kami_session: str | No
     conn.close()
     if not row:
         return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
-    base = str(request.base_url).rstrip("/")
+    base = base_url(request)
     domain = row["domain"]
     is_app = "." not in domain
     return {
