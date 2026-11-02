@@ -366,8 +366,11 @@ def delete_site(site_id: int):
     conn.close()
 
 
+APP_ID_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9._-]{1,62}$")
+
+
 def normalize_domain(raw: str) -> str:
-    """把用户填的各种写法统一成 host：https://a.com/x -> a.com"""
+    """把用户填的各种写法统一成标识：https://a.com/x -> a.com；App 英文标识原样保留"""
     d = (raw or "").strip().lower()
     if not d:
         return ""
@@ -391,13 +394,22 @@ def site_exists(domain: str) -> bool:
     return bool(row)
 
 
+def is_app_id(raw: str) -> bool:
+    """是否为 App 标识（没有点的英文名，如 myapp / myapp-pro）"""
+    d = normalize_domain(raw)
+    return bool(d) and "." not in d and bool(APP_ID_RE.match(d))
+
+
 def add_site(raw_domain: str, note: str = "", unlock_mode: str | None = None, lang: str = "") -> tuple[bool, str, dict | None]:
-    """手动新增接入网站。返回 (是否成功, 提示, 网站信息 dict)"""
+    """手动新增接入网站或 App。返回 (是否成功, 提示, 网站信息 dict)"""
     domain = normalize_domain(raw_domain)
     if not domain:
-        return False, "请填写网站域名", None
-    if "." not in domain or len(domain) < 3:
-        return False, "域名格式不正确，例如 example.com", None
+        return False, "请填写网站域名或 App 标识", None
+    if "." in domain:
+        if not APP_ID_RE.match(domain) or len(domain) < 4:
+            return False, "域名格式不正确，例如 example.com", None
+    elif not APP_ID_RE.match(domain):
+        return False, "格式不正确：网站填 example.com，App 填英文标识（如 myapp）", None
     conn = get_conn()
     _ensure_site_columns(conn)
     if conn.execute("SELECT 1 FROM sites WHERE domain=?", (domain,)).fetchone():

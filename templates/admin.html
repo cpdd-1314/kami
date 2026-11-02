@@ -201,6 +201,7 @@
           <td class="ops">
             <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
             <button class="sitelink" data-id="{{ s.id }}">指定链接</button>
+            <button class="sitepick" data-id="{{ s.id }}" data-domain="{{ s.domain }}">接入代码</button>
             <button class="delsite" data-id="{{ s.id }}">移除</button>
           </td>
         </tr>
@@ -212,8 +213,9 @@
     {% endif %}
     <div class="howto">
       <b>接入说明</b>
-      <p>把上面这行脚本放进目标网站的页面里（<code>site=</code> 填该网站的域名，例如 <code>example.com</code>），
-      首次有访客验证后该网站会自动出现在这里。</p>
+      <p><b>网站</b>：把 <code>&lt;script src="{{ base }}/embed.js?site=你的域名"&gt;&lt;/script&gt;</code> 放进页面里即可。</p>
+      <p><b>App</b>：先在上面「+ 添加网站」里用 App 标识登记（如 <code>myapp</code>，无点的英文名），
+      然后在 App 里调用下面的接口。点每行的「接入代码」可直接复制对应示例。</p>
     </div>
   </div>
 </div>
@@ -313,6 +315,33 @@ document.querySelectorAll('.sitelink').forEach(function (btn) {
           uiPrompt('「' + d.domain + '」的指定链接已生成，复制发给该网站使用（再次生成会更换旧链接）：', '指定链接', d.url, function () {});
         } else uiAlert(d.message, '生成失败');
       });
+  };
+});
+// ===== 接入代码：根据是网站还是 App 给出不同示例 =====
+var KAMI_BASE = {{ base|tojson }};
+document.querySelectorAll('.sitepick').forEach(function (btn) {
+  btn.onclick = function () {
+    var d = btn.dataset.domain;
+    var isApp = d.indexOf('.') < 0;
+    var text;
+    if (isApp) {
+      text = '【App 接入：' + d + '】\n\n'
+        + '1) 首次激活（用户输入卡密时调用）\n'
+        + 'POST ' + KAMI_BASE + '/api/app/verify\n'
+        + 'Header: X-Kami-Code: 卡密\n'
+        + '        X-Kami-App: ' + d + '\n\n'
+        + '2) 每次启动校验（不激活、不扣时长）\n'
+        + 'POST ' + KAMI_BASE + '/api/app/check\n'
+        + 'Header: X-Kami-Code: 卡密\n'
+        + '        X-Kami-App: ' + d + '\n\n'
+        + '返回 JSON：{"ok":true,"expire_at":"2026-12-01T10:00:00","expire_text":"2026-12-01 10:00","days_left":29}\n'
+        + 'ok=false 时 message 说明原因（无效/过期/未激活/仅限其他App）';
+    } else {
+      text = '【网站接入：' + d + '】\n\n'
+        + '<script src="' + KAMI_BASE + '/embed.js?site=' + d + '"><\/script>\n\n'
+        + '把这一行放进该网站每个需要保护的页面（或模板 head 里）即可。';
+    }
+    uiPrompt(text, isApp ? 'App 接入代码' : '网站接入代码', isApp ? (KAMI_BASE + '/api/app/verify  |  X-Kami-App: ' + d) : text, function () {});
   };
 });
 document.querySelectorAll('.delsite').forEach(function (btn) {

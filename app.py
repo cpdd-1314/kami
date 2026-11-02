@@ -98,6 +98,97 @@ async def check(request: Request, code: str = Form(""), site: str = Form("")):
     return {"ok": ok, "message": message, "expire_at": expire_at, "key": key}
 
 
+# ---------------- App / 客户端接入（JSON API）----------------
+
+@app.options("/api/app/verify")
+async def app_verify_preflight():
+    return PlainTextResponse("")
+
+
+@app.post("/api/app/verify")
+async def app_verify(request: Request):
+    """App 首次激活：等同 /api/verify，但纯 JSON、支持 Header 传卡密
+
+    请求（任选一种）：
+      POST /api/app/verify
+      Header: X-Kami-Code: XXXX-XXXX-XXXX-XXXX
+      Header: X-Kami-App:  myapp
+    或表单/JSON: {"code": "...", "app": "..."}
+    """
+    ip = client_ip(request)
+    if not check_rate(ip):
+        return JSONResponse({"ok": False, "key": "rate", "message": "尝试过于频繁，请稍后再试"}, status_code=429)
+    code, app_id = await _app_args(request)
+    if not app_id:
+        return JSONResponse({"ok": False, "key": "invalid", "message": "缺少 app 参数"}, status_code=400)
+    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=app_id)
+    return _app_resp(ok, key, expire_at, message)
+
+
+@app.options("/api/app/check")
+async def app_check_preflight():
+    return PlainTextResponse("")
+
+
+@app.post("/api/app/check")
+async def app_check(request: Request):
+    """App 每次启动校验：不激活、不扣时长，过期则返回 ok=false"""
+    code, app_id = await _app_args(request)
+    if not app_id:
+        return JSONResponse({"ok": False, "key": "invalid", "message": "缺少 app 参数"}, status_code=400)
+    ok, message, expire_at, key = db.check_card(code, domain=app_id)
+    return _app_resp(ok, key, expire_at, message)
+
+
+async def _app_args(request: Request) -> tuple[str, str]:
+    """从 Header / JSON / 表单中取出卡密与 App 标识"""
+    code = request.headers.get("x-kami-code") or ""
+    app_id = request.headers.get("x-kami-app") or ""
+    ctype = (request.headers.get("content-type") or "").lower()
+    if "json" in ctype:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        if isinstance(body, dict):
+            code = code or str(body.get("code") or "")
+            app_id = app_id or str(body.get("app") or body.get("site") or "")
+    else:
+        try:
+            form = await request.form()
+            code = code or str(form.get("code") or "")
+            app_id = app_id or str(form.get("app") or form.get("site") or "")
+        except Exception:
+            pass
+    return (code or "").strip().upper(), db.normalize_domain(app_id)
+
+
+def _app_resp(ok: bool, key: str, expire_at, message: str) -> JSONResponse:
+    return JSONResponse(
+        {
+            "ok": ok,
+            "key": key,
+            "message": message,
+            "expire_at": expire_at,
+            "expire_text": (
+                "永久有效" if (ok and not expire_at)
+                else (str(expire_at).replace("T", " ")[:16] if expire_at else "")
+            ),
+            "days_left": _days_left(expire_at),
+        }
+    )
+
+
+def _days_left(expire_at):
+    if not expire_at:
+        return None
+    try:
+        delta = datetime.fromisoformat(str(expire_at)) - datetime.now()
+        return max(0, delta.days)
+    except ValueError:
+        return None
+
+
 @app.get("/api/site")
 async def api_site(request: Request):
     """供嵌入脚本 / 指定链接页读取站点配置（解锁方式、首选语言）"""
