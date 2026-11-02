@@ -5,19 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>卡密验证</title>
 <link rel="stylesheet" href="/static/style.css">
-<style>
-@media (max-width: 720px) {
-  header { padding: 20px 16px; }
-  h1 { font-size: 22px !important; }
-  .grid { grid-template-columns: 1fr !important; gap: 12px; padding: 0 4px; }
-  #overlay > div, .modal { padding: 26px 20px !important; }
-  .modal h2 { font-size: 19px; }
-  .modal input { font-size: 16px !important; }
-}
-</style>
 </head>
-<body>
-  <div id="page-content" class="blurred">
+<body class="mode-{{ mode }}">
+  <div id="page-content">
     <header>
       <h1>✨ 会员专区</h1>
       <p>这里是受保护的内容区域，验证卡密后即可查看</p>
@@ -32,8 +22,8 @@
   <div id="overlay">
     <div class="modal" id="modal">
       <div class="modal-icon">🔑</div>
-      <h2>请输入卡密</h2>
-      <p class="sub">验证通过后即可查看本页内容</p>
+      <h2 id="m-title">请输入卡密</h2>
+      <p class="sub" id="m-sub">验证通过后即可查看本页内容</p>
       <input id="code-input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off">
       <button id="verify-btn">验 证</button>
       <p id="msg"></p>
@@ -44,45 +34,110 @@
 (function () {
   var KC = 'kami_code';
   var SITE = {{ site|tojson }};
-  function fmtExp(e) { return e ? '有效期至 ' + e.replace('T', ' ').slice(0, 16) : '永久有效'; }
+  var FIXED_LANG = {{ site_lang|tojson }};
+  var MODE = {{ mode|tojson }};
+
+  /* ====== 文案（含义全局统一，语言随网站/浏览器自动检测）====== */
+  var I18N = {
+    zh: {title:"请输入卡密",sub:"验证通过后即可查看本页内容",btn:"验 证",verifying:"验证中...",empty:"请输入卡密",invalid:"卡密无效",expired:"卡密已过期",notyet:"卡密未激活",limit:"该卡密仅限 {d} 使用",rate:"操作过于频繁，请稍后再试",net:"网络错误，请重试",ok:"卡密有效",until:"有效期至 ",forever:"永久有效"},
+    en: {title:"Enter your license key",sub:"Enter a valid key to view this page",btn:"VERIFY",verifying:"Checking...",empty:"Please enter your key",invalid:"Invalid key",expired:"Key expired",notyet:"Key not activated",limit:"This key is restricted to {d}",rate:"Too many attempts, please try later",net:"Network error, please retry",ok:"Key valid",until:"Valid until ",forever:"Lifetime access"},
+    ja: {title:"ライセンスキーを入力",sub:"有効なキーを入力すると表示されます",btn:"認 証",verifying:"確認中...",empty:"キーを入力してください",invalid:"無効なキーです",expired:"キーの期限が切れました",notyet:"キーが未アクティベートです",limit:"このキーは {d} 専用です",rate:"試行回数が多すぎます。しばらくしてから再試行してください",net:"ネットワークエラー、再試行してください",ok:"キー有効",until:"有効期限 ",forever:"無期限"},
+    ko: {title:"라이선스 키 입력",sub:"유효한 키를 입력하면 내용을 볼 수 있습니다",btn:"확인",verifying:"확인 중...",empty:"키를 입력해주세요",invalid:"유효하지 않은 키",expired:"키가 만료되었습니다",notyet:"키가 활성화되지 않았습니다",limit:"이 키는 {d} 전용입니다",rate:"시도가 너무 많습니다. 잠시 후 다시 시도하세요",net:"네트워크 오류, 다시 시도해주세요",ok:"키 유효",until:"유효기간 ",forever:"평생 유효"},
+    es: {title:"Introduce tu clave",sub:"Introduce una clave válida para ver esta página",btn:"VERIFICAR",verifying:"Verificando...",empty:"Introduce tu clave",invalid:"Clave inválida",expired:"Clave caducada",notyet:"Clave no activada",limit:"Esta clave solo sirve para {d}",rate:"Demasiados intentos, inténtalo más tarde",net:"Error de red, reintenta",ok:"Clave válida",until:"Válida hasta ",forever:"Acceso de por vida"},
+    fr: {title:"Saisissez votre clé",sub:"Saisissez une clé valide pour voir cette page",btn:"VÉRIFIER",verifying:"Vérification...",empty:"Veuillez saisir votre clé",invalid:"Clé invalide",expired:"Clé expirée",notyet:"Clé non activée",limit:"Cette clé est réservée à {d}",rate:"Trop de tentatives, réessayez plus tard",net:"Erreur réseau, réessayez",ok:"Clé valide",until:"Valable jusqu'au ",forever:"Accès à vie"},
+    de: {title:"Lizenzschlüssel eingeben",sub:"Gültigen Schlüssel eingeben, um die Seite zu sehen",btn:"PRÜFEN",verifying:"Prüfe...",empty:"Bitte Schlüssel eingeben",invalid:"Ungültiger Schlüssel",expired:"Schlüssel abgelaufen",notyet:"Schlüssel nicht aktiviert",limit:"Dieser Schlüssel gilt nur für {d}",rate:"Zu viele Versuche, bitte später erneut",net:"Netzwerkfehler, bitte erneut versuchen",ok:"Schlüssel gültig",until:"Gültig bis ",forever:"Unbegrenzt gültig"},
+    ru: {title:"Введите ключ",sub:"Введите действительный ключ, чтобы увидеть страницу",btn:"ПРОВЕРИТЬ",verifying:"Проверка...",empty:"Введите ключ",invalid:"Неверный ключ",expired:"Срок действия истёк",notyet:"Ключ не активирован",limit:"Ключ действует только для {d}",rate:"Слишком много попыток, попробуйте позже",net:"Ошибка сети, повторите",ok:"Ключ действителен",until:"Действует до ",forever:"Бессрочно"},
+    pt: {title:"Insira sua chave",sub:"Insira uma chave válida para ver esta página",btn:"VERIFICAR",verifying:"Verificando...",empty:"Insira sua chave",invalid:"Chave inválida",expired:"Chave expirada",notyet:"Chave não ativada",limit:"Esta chave é exclusiva de {d}",rate:"Muitas tentativas, tente mais tarde",net:"Erro de rede, tente novamente",ok:"Chave válida",until:"Válida até ",forever:"Acesso vitalício"},
+    ar: {title:"أدخل مفتاح الترخيص",sub:"أدخل مفتاحًا صالحًا لمشاهدة هذه الصفحة",btn:"تحقق",verifying:"جارٍ التحقق...",empty:"يرجى إدخال المفتاح",invalid:"مفتاح غير صالح",expired:"انتهت صلاحية المفتاح",notyet:"المفتاح غير مفعّل",limit:"هذا المفتاح مخصص لـ {d} فقط",rate:"محاولات كثيرة جدًا، حاول لاحقًا",net:"خطأ في الشبكة، حاول مجددًا",ok:"المفتاح صالح",until:"صالح حتى ",forever:"صلاحية دائمة"},
+    hi: {title:"अपनी कुंजी दर्ज करें",sub:"यह पेज देखने के लिए वैध कुंजी दर्ज करें",btn:"सत्यापित करें",verifying:"जांच हो रही है...",empty:"कृपया कुंजी दर्ज करें",invalid:"अमान्य कुंजी",expired:"कुंजी की अवधि समाप्त",notyet:"कुंजी सक्रिय नहीं",limit:"यह कुंजी केवल {d} के लिए है",rate:"बहुत अधिक प्रयास, कृपया बाद में प्रयास करें",net:"नेटवर्क त्रुटि, पुनः प्रयास करें",ok:"कुंजी मान्य",until:"तक मान्य ",forever:"आजीवन मान्य"},
+    id: {title:"Masukkan kunci lisensi",sub:"Masukkan kunci yang valid untuk melihat halaman ini",btn:"VERIFIKASI",verifying:"Memeriksa...",empty:"Silakan masukkan kunci",invalid:"Kunci tidak valid",expired:"Kunci kedaluwarsa",notyet:"Kunci belum diaktifkan",limit:"Kunci ini hanya untuk {d}",rate:"Terlalu banyak percobaan, coba lagi nanti",net:"Kesalahan jaringan, coba lagi",ok:"Kunci valid",until:"Berlaku hingga ",forever:"Akses seumur hidup"},
+    th: {title:"ป้อนคีย์อนุญาต",sub:"ป้อนคีย์ที่ถูกต้องเพื่อดูหน้านี้",btn:"ตรวจสอบ",verifying:"กำลังตรวจ...",empty:"กรุณาป้อนคีย์",invalid:"คีย์ไม่ถูกต้อง",expired:"คีย์หมดอายุ",notyet:"คีย์ยังไม่ได้เปิดใช้",limit:"คีย์นี้ใช้ได้เฉพาะ {d}",rate:"พยายามบ่อยเกินไป โปรดลองใหม่ภายหลัง",net:"เครือข่ายผิดพลาด ลองอีกครั้ง",ok:"คีย์ถูกต้อง",until:"ใช้ได้ถึง ",forever:"ใช้ได้ตลอดชีวิต"},
+    vi: {title:"Nhập mã bản quyền",sub:"Nhập mã hợp lệ để xem trang này",btn:"XÁC MINH",verifying:"Đang kiểm tra...",empty:"Vui lòng nhập mã",invalid:"Mã không hợp lệ",expired:"Mã đã hết hạn",notyet:"Mã chưa kích hoạt",limit:"Mã này chỉ dùng cho {d}",rate:"Quá nhiều lần thử, vui lòng thử lại sau",net:"Lỗi mạng, vui lòng thử lại",ok:"Mã hợp lệ",until:"Có hiệu lực đến ",forever:"Vĩnh viễn"},
+    tr: {title:"Lisans anahtarını girin",sub:"Bu sayfayı görmek için geçerli bir anahtar girin",btn:"DOĞRULA",verifying:"Kontrol ediliyor...",empty:"Lütfen anahtarı girin",invalid:"Geçersiz anahtar",expired:"Anahtar süresi doldu",notyet:"Anahtar etkinleştirilmedi",limit:"Bu anahtar yalnızca {d} için",rate:"Çok fazla deneme, lütfen sonra tekrar deneyin",net:"Ağ hatası, tekrar deneyin",ok:"Anahtar geçerli",until:"Geçerlilik: ",forever:"Ömür boyu"},
+    it: {title:"Inserisci la tua chiave",sub:"Inserisci una chiave valida per vedere questa pagina",btn:"VERIFICA",verifying:"Verifica...",empty:"Inserisci la chiave",invalid:"Chiave non valida",expired:"Chiave scaduta",notyet:"Chiave non attivata",limit:"Questa chiave vale solo per {d}",rate:"Troppi tentativi, riprova più tardi",net:"Errore di rete, riprova",ok:"Chiave valida",until:"Valida fino al ",forever:"Accesso a vita"},
+    nl: {title:"Voer je licentiesleutel in",sub:"Voer een geldige sleutel in om deze pagina te bekijken",btn:"VERIFIËREN",verifying:"Controleren...",empty:"Voer je sleutel in",invalid:"Ongeldige sleutel",expired:"Sleutel verlopen",notyet:"Sleutel niet geactiveerd",limit:"Deze sleutel is alleen voor {d}",rate:"Te veel pogingen, probeer het later",net:"Netwerkfout, probeer opnieuw",ok:"Sleutel geldig",until:"Geldig tot ",forever:"Levenslang"},
+    pl: {title:"Wpisz klucz licencji",sub:"Wpisz prawidłowy klucz, aby zobaczyć tę stronę",btn:"WERYFIKUJ",verifying:"Sprawdzanie...",empty:"Wpisz klucz",invalid:"Nieprawidłowy klucz",expired:"Klucz wygasł",notyet:"Klucz nieaktywowany",limit:"Ten klucz działa tylko dla {d}",rate:"Zbyt wiele prób, spróbuj później",net:"Błąd sieci, spróbuj ponownie",ok:"Klucz prawidłowy",until:"Ważny do ",forever:"Dostęp bezterminowy"},
+    uk: {title:"Введіть ключ",sub:"Введіть дійсний ключ, щоб переглянути цю сторінку",btn:"ПЕРЕВІРИТИ",verifying:"Перевірка...",empty:"Введіть ключ",invalid:"Невірний ключ",expired:"Термін дії минув",notyet:"Ключ не активовано",limit:"Ключ діє лише для {d}",rate:"Забагато спроб, спробуйте пізніше",net:"Помилка мережі, повторіть",ok:"Ключ дійсний",until:"Дійсний до ",forever:"Безстроково"},
+    fa: {title:"کلید لایسنس را وارد کنید",sub:"برای مشاهده این صفحه کلید معتبر وارد کنید",btn:"تایید",verifying:"در حال بررسی...",empty:"لطفا کلید را وارد کنید",invalid:"کلید نامعتبر",expired:"کلید منقضی شده",notyet:"کلید فعال نشده",limit:"این کلید فقط برای {d} است",rate:"تلاش بیش از حد، بعداً دوباره امتحان کنید",net:"خطای شبکه، دوباره تلاش کنید",ok:"کلید معتبر",until:"معتبر تا ",forever:"دسترسی دائمی"},
+    ms: {title:"Masukkan kunci lesen",sub:"Masukkan kunci yang sah untuk melihat halaman ini",btn:"SAHKAN",verifying:"Menyemak...",empty:"Sila masukkan kunci",invalid:"Kunci tidak sah",expired:"Kunci tamat tempoh",notyet:"Kunci belum diaktifkan",limit:"Kunci ini khusus untuk {d}",rate:"Terlalu banyak percubaan, cuba lagi nanti",net:"Ralat rangkaian, cuba lagi",ok:"Kunci sah",until:"Sah hingga ",forever:"Akses seumur hidup"}
+  };
+  var RTL = {ar:1, fa:1};
+  function pickLang() {
+    if (FIXED_LANG && I18N[FIXED_LANG]) return FIXED_LANG;
+    var ls = [];
+    try { if (navigator.languages && navigator.languages.length) ls = navigator.languages.slice(); } catch (e) {}
+    if (!ls.length) ls = [navigator.language || navigator.userLanguage || 'zh'];
+    for (var i = 0; i < ls.length; i++) {
+      var c = String(ls[i]).toLowerCase().split('-')[0];
+      if (I18N[c]) return c;
+    }
+    return 'zh';
+  }
+  var LANG = pickLang(), L = I18N[LANG] || I18N.zh;
+  function tr(k) { return (L && L[k]) || I18N.zh[k]; }
+  function msgKey(m) {
+    if (!m) return 'invalid';
+    if (m.indexOf('频繁') >= 0) return 'rate';
+    if (m.indexOf('过期') >= 0 || m.indexOf('已使用') >= 0) return 'expired';
+    if (m.indexOf('未激活') >= 0) return 'notyet';
+    if (m.indexOf('仅限') >= 0) return 'limit';
+    if (m.indexOf('无效') >= 0 || m.indexOf('不存在') >= 0) return 'invalid';
+    return '';
+  }
+  function msgText(key, raw) {
+    if (!key || !I18N.zh[key]) return raw || tr('invalid');
+    var out = tr(key), m = /仅限\s*(\S+)\s*使用/.exec(raw || '');
+    if (m) out = out.replace('{d}', m[1]);
+    return out;
+  }
+  function fmtExp(e) { return e ? tr('until') + e.replace('T', ' ').slice(0, 16) : tr('forever'); }
+
+  /* ====== 应用语言（含 rtl） ====== */
+  document.documentElement.lang = LANG;
+  if (RTL[LANG]) document.documentElement.dir = 'rtl';
+  document.title = tr('title');
+  document.getElementById('m-title').textContent = tr('title');
+  document.getElementById('m-sub').textContent = tr('sub');
+
   function toast(txt) {
     var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:99999;background:#16a34a;color:#fff;padding:12px 22px;border-radius:10px;font-size:15px;box-shadow:0 8px 30px rgba(0,0,0,.25);';
+    t.className = 'kami-toast';
     t.textContent = txt;
     document.body.appendChild(t);
     setTimeout(function () { t.remove(); }, 3000);
   }
+
   var input = document.getElementById('code-input'),
       btn = document.getElementById('verify-btn'),
       msg = document.getElementById('msg'),
       overlay = document.getElementById('overlay'),
-      content = document.getElementById('page-content');
+      content = document.getElementById('page-content'),
+      modal = document.getElementById('modal');
 
-  function body(code, api) {
-    return api + '=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE);
-  }
+  btn.textContent = tr('btn');
   function call(api, code, cb) {
     fetch('/api/' + api, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE)
+      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) + '&lang=' + LANG
     })
     .then(function (r) { return r.json(); }).then(cb)
-    .catch(function () { cb({ ok: false, message: '网络错误，请重试' }); });
+    .catch(function () { cb({ ok: false, message: 'net', key: 'net' }); });
   }
   function unlock() {
-    overlay.style.display = 'none';
-    content.classList.remove('blurred');
+    overlay.classList.add('hide');
+    document.body.classList.remove('mode-blur', 'mode-dim', 'mode-lock');
+    setTimeout(function () { overlay.style.display = 'none'; }, 220);
   }
   function showOverlay(tip) {
     overlay.style.display = 'flex';
-    content.classList.add('blurred');
+    overlay.classList.remove('hide');
     if (tip) { msg.style.color = '#ef4444'; msg.textContent = tip; }
     input.focus();
   }
   function shake() {
     input.style.borderColor = '#ef4444';
-    var modal = document.getElementById('modal'), n = 0;
+    var n = 0;
     var t = setInterval(function () {
       n++; modal.style.transform = 'translateX(' + (n % 2 ? -7 : 7) + 'px)';
       if (n > 5) { clearInterval(t); modal.style.transform = ''; }
@@ -90,30 +145,29 @@
   }
   function submit() {
     var code = input.value.trim();
-    if (!code) { msg.textContent = '请输入卡密'; shake(); return; }
-    btn.disabled = true; btn.textContent = '验证中...';
+    if (!code) { msg.style.color = '#ef4444'; msg.textContent = tr('empty'); shake(); return; }
+    btn.disabled = true; btn.textContent = tr('verifying');
     call('verify', code, function (d) {
       if (d.ok) {
         try { localStorage.setItem(KC, code); } catch (e) {}
-        msg.style.color = '#22c55e';
-        msg.textContent = '✓ 卡密有效';
         unlock();
-        toast('✓ 卡密有效，' + fmtExp(d.expire_at));
+        toast('✓ ' + tr('ok') + ' · ' + fmtExp(d.expire_at));
       } else {
         msg.style.color = '#ef4444';
-        msg.textContent = d.message || '卡密无效';
+        msg.textContent = msgText(d.key || msgKey(d.message), d.message);
         shake();
       }
-      btn.disabled = false; btn.textContent = '验 证';
+      btn.disabled = false; btn.textContent = tr('btn');
     });
   }
+
   // 每次进入都向服务器校验一次保存的卡密（过期立即弹窗）
   var saved = null;
   try { saved = localStorage.getItem(KC); } catch (e) {}
   if (saved) {
     call('check', saved, function (d) {
-      if (d.ok) { unlock(); toast('✓ 卡密有效，' + fmtExp(d.expire_at)); }
-      else showOverlay(d.message);
+      if (d.ok) { unlock(); toast('✓ ' + tr('ok') + ' · ' + fmtExp(d.expire_at)); }
+      else showOverlay(msgText(d.key || msgKey(d.message), d.message));
     });
   }
 

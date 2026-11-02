@@ -95,28 +95,68 @@
 
   <div class="panel" id="sec-sites">
     <h3>接入的网站（{{ sites|length }}）</h3>
+    <p class="hint">每个网站可单独设置 <b>解锁方式</b> 与 <b>语言</b>，改完立即生效，该网站所有访客都使用同一套。</p>
     {% if sites %}
     <div class="table-scroll"><table>
-      <thead><tr><th>域名</th><th>绑定卡密</th><th>未使用</th><th>激活次数</th><th>最近激活</th><th>登记时间</th><th>操作</th></tr></thead>
+      <thead><tr><th>域名</th><th>解锁方式</th><th>语言</th><th>绑定卡密</th><th>未使用</th><th>激活次数</th><th>最近激活</th><th>操作</th></tr></thead>
       <tbody>
       {% for s in sites %}
         <tr>
           <td class="code">{{ s.domain }}</td>
+          <td>
+            <select class="mode-sel" data-id="{{ s.id }}">
+              <option value="blur" {% if s.unlock_mode=='blur' %}selected{% endif %}>锁屏模糊</option>
+              <option value="dim"  {% if s.unlock_mode=='dim'  %}selected{% endif %}>深色变暗</option>
+              <option value="lock" {% if s.unlock_mode=='lock' %}selected{% endif %}>完全隐藏</option>
+            </select>
+          </td>
+          <td>
+            <select class="lang-sel" data-id="{{ s.id }}">
+              <option value="" {% if not s.lang %}selected{% endif %}>自动检测</option>
+              <option value="zh" {% if s.lang=='zh' %}selected{% endif %}>简体中文</option>
+              <option value="en" {% if s.lang=='en' %}selected{% endif %}>English</option>
+              <option value="ja" {% if s.lang=='ja' %}selected{% endif %}>日本語</option>
+              <option value="ko" {% if s.lang=='ko' %}selected{% endif %}>한국어</option>
+              <option value="es" {% if s.lang=='es' %}selected{% endif %}>Español</option>
+              <option value="fr" {% if s.lang=='fr' %}selected{% endif %}>Français</option>
+              <option value="de" {% if s.lang=='de' %}selected{% endif %}>Deutsch</option>
+              <option value="ru" {% if s.lang=='ru' %}selected{% endif %}>Русский</option>
+              <option value="pt" {% if s.lang=='pt' %}selected{% endif %}>Português</option>
+              <option value="ar" {% if s.lang=='ar' %}selected{% endif %}>العربية</option>
+              <option value="hi" {% if s.lang=='hi' %}selected{% endif %}>हिन्दी</option>
+              <option value="id" {% if s.lang=='id' %}selected{% endif %}>Indonesia</option>
+              <option value="th" {% if s.lang=='th' %}selected{% endif %}>ไทย</option>
+              <option value="vi" {% if s.lang=='vi' %}selected{% endif %}>Tiếng Việt</option>
+              <option value="tr" {% if s.lang=='tr' %}selected{% endif %}>Türkçe</option>
+              <option value="it" {% if s.lang=='it' %}selected{% endif %}>Italiano</option>
+              <option value="nl" {% if s.lang=='nl' %}selected{% endif %}>Nederlands</option>
+              <option value="pl" {% if s.lang=='pl' %}selected{% endif %}>Polski</option>
+              <option value="uk" {% if s.lang=='uk' %}selected{% endif %}>Українська</option>
+              <option value="fa" {% if s.lang=='fa' %}selected{% endif %}>فارسی</option>
+              <option value="ms" {% if s.lang=='ms' %}selected{% endif %}>Melayu</option>
+            </select>
+          </td>
           <td>{{ s.bound_total }}</td>
           <td>{{ s.bound_unused }}</td>
           <td>{{ s.activated }}</td>
           <td>{{ s.last_active or '—' }}</td>
-          <td>{{ s.created_at }}</td>
-          <td>
+          <td class="ops">
             <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
-            <button class="sitelink" data-id="{{ s.id }}">生成指定链接</button>
+            <button class="sitelink" data-id="{{ s.id }}">指定链接</button>
             <button class="delsite" data-id="{{ s.id }}">移除</button>
           </td>
         </tr>
       {% endfor %}
       </tbody>
     </table></div>
-    {% else %}<p class="empty">暂无网站接入。在其他网站页面加入：<code>&lt;script src="本系统地址/embed.js"&gt;&lt;/script&gt;</code></p>{% endif %}
+    {% else %}
+    <p class="empty">暂无网站接入。在需要保护的网站页面加入：<br><code>&lt;script src="{{ base }}/embed.js?site=你的域名"&gt;&lt;/script&gt;</code></p>
+    {% endif %}
+    <div class="howto">
+      <b>接入说明</b>
+      <p>把上面这行脚本放进目标网站的页面里（<code>site=</code> 填该网站的域名，例如 <code>example.com</code>），
+      首次有访客验证后该网站会自动出现在这里。</p>
+    </div>
   </div>
 </div>
 
@@ -151,7 +191,7 @@ document.querySelectorAll('.sitelink').forEach(function (btn) {
       .then(function (d) {
         btn.disabled = false;
         if (d.ok) {
-          uiPrompt('「' + d.domain + '」的指定链接已生成，复制发给该网站使用（重复生成会更换旧链接）：', '指定链接', d.url, function () {});
+          uiPrompt('「' + d.domain + '」的指定链接已生成，复制发给该网站使用（再次生成会更换旧链接）：', '指定链接', d.url, function () {});
         } else uiAlert(d.message, '生成失败');
       });
   };
@@ -161,6 +201,30 @@ document.querySelectorAll('.delsite').forEach(function (btn) {
     uiConfirm('移除后该网站将不再显示在列表中（不影响其卡密），确定移除？', '移除网站', function (yes) {
       if (yes) fetch('/admin/site/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
     });
+  };
+});
+document.querySelectorAll('.mode-sel').forEach(function (sel) {
+  sel.onchange = function () {
+    var id = sel.dataset.id;
+    fetch('/admin/site/mode/' + id, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'mode=' + encodeURIComponent(sel.value) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { uiAlert('已切换为「' + sel.options[sel.selectedIndex].text + '」，该网站的访客刷新页面即可生效。', '保存成功'); }
+        else uiAlert(d.message || '保存失败', '保存失败');
+      })
+      .catch(function () { uiAlert('网络错误，请重试', '保存失败'); });
+  };
+});
+document.querySelectorAll('.lang-sel').forEach(function (sel) {
+  sel.onchange = function () {
+    var id = sel.dataset.id;
+    fetch('/admin/site/lang/' + id, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'lang=' + encodeURIComponent(sel.value) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { uiAlert('语言已设为「' + sel.options[sel.selectedIndex].text + '」。留空「自动检测」时按访客浏览器语言自动翻译。', '保存成功'); }
+        else uiAlert(d.message || '保存失败', '保存失败');
+      })
+      .catch(function () { uiAlert('网络错误，请重试', '保存失败'); });
   };
 });
 document.getElementById('pwd-toggle').onclick = function () {

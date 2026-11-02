@@ -52,7 +52,11 @@ def card_view(r: dict) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "site": ""})
+    lang = (request.query_params.get("lang") or "").strip().lower()[:2]
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "site": "", "mode": db.DEFAULT_MODE, "site_lang": lang},
+    )
 
 
 @app.get("/s/{token}", response_class=HTMLResponse)
@@ -61,21 +65,25 @@ async def site_page(token: str, request: Request):
     domain = db.site_by_token(token)
     if not domain:
         return PlainTextResponse("链接无效或已失效", status_code=404)
-    return templates.TemplateResponse("index.html", {"request": request, "site": domain})
+    st = db.site_settings(domain)
+    return templates.TemplateResponse(
+        "index.html",
+        {"request": request, "site": domain, "mode": st["unlock_mode"], "site_lang": st["lang"]},
+    )
 
 
 @app.post("/api/verify")
 async def verify(request: Request, code: str = Form(""), site: str = Form("")):
     ip = client_ip(request)
     if not check_rate(ip):
-        return JSONResponse({"ok": False, "message": "尝试过于频繁，请稍后再试"}, status_code=429)
+        return JSONResponse({"ok": False, "message": "尝试过于频繁，请稍后再试", "key": "rate"}, status_code=429)
     origin = request.headers.get("origin") or request.headers.get("referer") or ""
     domain = site.strip() or None
     if not domain and origin:
         from urllib.parse import urlparse
         domain = urlparse(origin).netloc or None
-    ok, message, expire_at = db.verify_card(code, user=ip, domain=domain)
-    return {"ok": ok, "message": message, "expire_at": expire_at}
+    ok, message, expire_at, key = db.verify_card(code, user=ip, domain=domain)
+    return {"ok": ok, "message": message, "expire_at": expire_at, "key": key}
 
 
 @app.post("/api/check")
@@ -86,88 +94,34 @@ async def check(request: Request, code: str = Form(""), site: str = Form("")):
     if not domain and origin:
         from urllib.parse import urlparse
         domain = urlparse(origin).netloc or None
-    ok, message, expire_at = db.check_card(code, domain=domain)
-    return {"ok": ok, "message": message, "expire_at": expire_at}
+    ok, message, expire_at, key = db.check_card(code, domain=domain)
+    return {"ok": ok, "message": message, "expire_at": expire_at, "key": key}
+
+
+@app.get("/api/site")
+async def api_site(request: Request):
+    """供嵌入脚本 / 指定链接页读取站点配置（解锁方式、首选语言）"""
+    site = (request.query_params.get("site") or "").strip()
+    st = db.site_settings(site or None)
+    return {"site": site, "mode": st["unlock_mode"], "lang": st["lang"]}
 
 
 # ---------------- embed.js ----------------
 
-EMBED_JS = """(function () {
-  var KC = 'kami_code';
-  var SITE = '%SITE%';
-  var T_TITLE = %TITLE%;
-  var T_SUB = %SUB%;
-  var T_BTN = %BTN%;
-  var T_COLOR = %COLOR%;
-  function fmtExp(e) { return e ? '有效期至 ' + e.replace('T', ' ').slice(0, 16) : '永久有效'; }
-  function toast(txt) {
-    var t = document.createElement('div');
-    t.style.cssText = 'position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:2147483647;background:#16a34a;color:#fff;padding:12px 22px;border-radius:10px;font-size:15px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25);';
-    t.textContent = txt;
-    document.body.appendChild(t);
-    setTimeout(function () { t.remove(); }, 3000);
-  }
-  function post(url, code, cb) {
-    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) })
-      .then(function (r) { return r.json(); }).then(cb)
-      .catch(function () { cb({ ok: false, message: '网络错误，请重试' }); });
-  }
-  function unlock() {
-    var el = document.getElementById('kami-overlay');
-    if (el) el.remove();
-  }
-  function build(prefill, tip) {
-    if (document.getElementById('kami-overlay')) return;
-    var overlay = document.createElement('div');
-    overlay.id = 'kami-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.15);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);';
-    var box = document.createElement('div');
-    box.style.cssText = 'width:min(92vw,400px);background:#fff;border-radius:16px;padding:32px 28px;box-shadow:0 20px 60px rgba(80,60,180,.35);font-family:system-ui,-apple-system,sans-serif;text-align:center;';
-    box.innerHTML = ''
-      + '<div style="width:74px;height:74px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,' + T_COLOR + '22,' + T_COLOR + '11);box-shadow:0 10px 24px ' + T_COLOR + '33;">\\u{1F511}</div>'
-      + '<h2 style="margin:14px 0 6px;color:#1f2340;font-size:21px;">' + T_TITLE + '</h2>'
-      + '<p style="margin:0 0 20px;color:#8a8fa8;font-size:13px;">' + (tip || T_SUB) + '</p>'
-      + '<input id="kami-code" placeholder="XXXX-XXXX-XXXX-XXXX" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid #dcdff0;border-radius:12px;font-size:16px;letter-spacing:2px;text-align:center;outline:none;transition:border-color .2s,box-shadow .2s;background:#fafbff;" />'
-      + '<button id="kami-btn" style="margin-top:14px;width:100%;padding:13px;border:none;border-radius:12px;background:linear-gradient(135deg,' + T_COLOR + ',' + T_COLOR + 'cc);color:#fff;font-size:16px;font-weight:600;letter-spacing:6px;cursor:pointer;box-shadow:0 8px 20px ' + T_COLOR + '55;">' + T_BTN + '</button>'
-      + '<p id="kami-msg" style="min-height:18px;margin:12px 0 0;color:#ef4444;font-size:13px;"></p>';
-    overlay.appendChild(box);
-    document.body.appendChild(overlay);
-    var input = box.querySelector('#kami-code'), msg = box.querySelector('#kami-msg'), btn = box.querySelector('#kami-btn');
-    if (prefill) input.value = prefill;
-    input.focus();
-    function shake() { input.style.borderColor = '#ef4444'; box.style.transition = 'transform .1s'; var n = 0; var t = setInterval(function () { n++; box.style.transform = 'translateX(' + (n % 2 ? -6 : 6) + 'px)'; if (n > 5) { clearInterval(t); box.style.transform = ''; } }, 60); }
-    function submit() {
-      var code = input.value.trim();
-      if (!code) { msg.textContent = '\\u8bf7\\u8f93\\u5165\\u5361\\u5bc6'; shake(); return; }
-      btn.disabled = true; btn.textContent = T_BTN + '...';
-      post('%BASE%/api/verify', code, function (d) {
-        if (d.ok) {
-          localStorage.setItem(KC, code);
-          unlock();
-          toast('✓ 卡密有效，' + fmtExp(d.expire_at));
-        } else { msg.textContent = d.message || '卡密无效'; shake(); }
-        btn.disabled = false; btn.textContent = T_BTN;
-      });
-    }
-    btn.onclick = submit;
-    input.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
-    input.oninput = function () { input.style.borderColor = '#dcdff0'; msg.textContent = ''; };
-  }
-  // 每次进入都用服务器校验一次已保存的卡密（过期/失效立即弹窗）
-  var saved = null;
-  try { saved = localStorage.getItem(KC); } catch (e) {}
-  if (saved) {
-    post('%BASE%/api/check', saved, function (d) {
-      if (d.ok) {
-        var go = function () { unlock(); toast('✓ 卡密有效，' + fmtExp(d.expire_at)); };
-        if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', go); else go();
-      }
-      else build(saved, d.message);
-    });
-  } else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { build(); });
-  else build();
-})();"""
+EMBED_TPL = BASE_DIR / "static" / "embed.tpl.js"
+_TPL_CACHE: dict = {"mtime": 0.0, "text": ""}
+
+
+def embed_template() -> str:
+    """读取嵌入脚本模板（按 mtime 缓存，改了文件自动生效）"""
+    try:
+        mt = EMBED_TPL.stat().st_mtime
+        if _TPL_CACHE["mtime"] != mt or not _TPL_CACHE["text"]:
+            _TPL_CACHE["text"] = EMBED_TPL.read_text(encoding="utf-8")
+            _TPL_CACHE["mtime"] = mt
+    except OSError:
+        return ""
+    return _TPL_CACHE["text"]
 
 
 @app.get("/embed.js")
@@ -175,16 +129,24 @@ async def embed_js(request: Request):
     import json
     base = str(request.base_url).rstrip("/")
     site = request.query_params.get("site") or ""
-    t = dict(db.THEME_DEFAULT)  # 弹窗样式系统统一
+    st = db.site_settings(site or None)
+    t = dict(db.THEME_DEFAULT)  # 弹窗样式系统统一，文案由 embed.tpl.js 按语言翻译
     js = (
-        EMBED_JS.replace("%BASE%", base)
-        .replace("%SITE%", site)
-        .replace("%TITLE%", json.dumps(t["title"], ensure_ascii=False))
-        .replace("%SUB%", json.dumps(t["sub"], ensure_ascii=False))
-        .replace("%BTN%", json.dumps(t["btn"], ensure_ascii=False))
-        .replace("%COLOR%", json.dumps(t["color"], ensure_ascii=False))
+        embed_template()
+        .replace("__BASE__", base)
+        .replace("__SITE__", site)
+        .replace("__MODE__", st["unlock_mode"])
+        .replace("__LANG__", st["lang"] or "")
+        .replace("__TITLE__", json.dumps("", ensure_ascii=False))
+        .replace("__SUB__", json.dumps("", ensure_ascii=False))
+        .replace("__BTN__", json.dumps("", ensure_ascii=False))
+        .replace("__COLOR__", json.dumps(t["color"], ensure_ascii=False))
     )
-    return PlainTextResponse(js, media_type="application/javascript")
+    return PlainTextResponse(
+        js,
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-cache, max-age=60", "Access-Control-Allow-Origin": "*"},
+    )
 
 
 # ---------------- 管理后台 ----------------
@@ -224,7 +186,15 @@ async def dashboard(request: Request, kami_session: str | None = Cookie(None)):
     cards = [card_view(r) for r in db.list_cards(status, q)]
     return templates.TemplateResponse(
         "admin.html",
-        {"request": request, "cards": cards, "stats": db.stats(), "sites": db.list_sites(), "status": status or "", "q": q or ""},
+        {
+            "request": request,
+            "cards": cards,
+            "stats": db.stats(),
+            "sites": db.list_sites(),
+            "status": status or "",
+            "q": q or "",
+            "base": str(request.base_url).rstrip("/"),
+        },
     )
 
 
@@ -298,6 +268,25 @@ async def delete_site(site_id: int, kami_session: str | None = Cookie(None)):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
     db.delete_site(site_id)
     return {"ok": True}
+
+
+@app.post("/admin/site/mode/{site_id}")
+async def admin_site_mode(site_id: int, mode: str = Form(""), kami_session: str | None = Cookie(None)):
+    """设置该网站的解锁方式：blur 模糊 / dim 变暗 / lock 锁屏"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    if not db.set_site_unlock_mode(site_id, mode):
+        return JSONResponse({"ok": False, "message": "解锁方式无效"}, status_code=400)
+    return {"ok": True, "mode": mode}
+
+
+@app.post("/admin/site/lang/{site_id}")
+async def admin_site_lang(site_id: int, lang: str = Form(""), kami_session: str | None = Cookie(None)):
+    """设置该网站的语言；留空 = 按访客浏览器语言自动检测"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    db.set_site_lang(site_id, lang)
+    return {"ok": True, "lang": lang}
 
 
 @app.get("/admin/export")
