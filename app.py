@@ -95,6 +95,14 @@ async def check(request: Request, code: str = Form(""), site: str = Form("")):
 EMBED_JS = """(function () {
   var KC = 'kami_code';
   var SITE = '%SITE%';
+  function fmtExp(e) { return e ? '有效期至 ' + e.replace('T', ' ').slice(0, 16) : '永久有效'; }
+  function toast(txt) {
+    var t = document.createElement('div');
+    t.style.cssText = 'position:fixed;left:50%;top:24px;transform:translateX(-50%);z-index:2147483647;background:#16a34a;color:#fff;padding:12px 22px;border-radius:10px;font-size:15px;font-family:system-ui,-apple-system,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.25);';
+    t.textContent = txt;
+    document.body.appendChild(t);
+    setTimeout(function () { t.remove(); }, 3000);
+  }
   function post(url, code, cb) {
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) })
@@ -133,7 +141,8 @@ EMBED_JS = """(function () {
         if (d.ok) {
           localStorage.setItem(KC, code);
           unlock();
-        } else { msg.textContent = d.message || '\\u9a8c\\u8bc1\\u5931\\u8d25'; shake(); }
+          toast('✓ 卡密有效，' + fmtExp(d.expire_at));
+        } else { msg.textContent = d.message || '卡密无效'; shake(); }
         btn.disabled = false; btn.textContent = '\\u9a8c \\u8bc1';
       });
     }
@@ -146,7 +155,10 @@ EMBED_JS = """(function () {
   try { saved = localStorage.getItem(KC); } catch (e) {}
   if (saved) {
     post('%BASE%/api/check', saved, function (d) {
-      if (d.ok) { window.addEventListener('DOMContentLoaded', unlock); if (document.readyState !== 'loading') unlock(); }
+      if (d.ok) {
+        var go = function () { unlock(); toast('✓ 卡密有效，' + fmtExp(d.expire_at)); };
+        if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', go); else go();
+      }
       else build(saved, d.message);
     });
   } else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { build(); });

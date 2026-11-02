@@ -118,15 +118,15 @@ document.getElementById('g-btn').onclick = function () {
         var pre = document.getElementById('g-result');
         pre.hidden = false; pre.textContent = '已生成 ' + d.codes.length + ' 个卡密：\n' + d.codes.join('\n');
         setTimeout(function () { location.reload(); }, 2500);
-      } else { alert(d.message); }
+      } else { uiAlert(d.message, '生成失败'); }
       b.disabled = false;
     });
 };
 document.querySelectorAll('.del').forEach(function (btn) {
   btn.onclick = function () {
-    if (!confirm('确定删除该卡密？')) return;
-    fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
-  };
+    uiConfirm('确定删除该卡密？', '删除卡密', function (yes) {
+      if (yes) fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+    });  };
 });
 document.querySelectorAll('.sitelink').forEach(function (btn) {
   btn.onclick = function () {
@@ -136,15 +136,16 @@ document.querySelectorAll('.sitelink').forEach(function (btn) {
       .then(function (d) {
         btn.disabled = false;
         if (d.ok) {
-          prompt('「' + d.domain + '」的指定链接已生成（可发给该网站使用，重复生成会更换旧链接）：', d.url);
-        } else alert(d.message);
+          uiPrompt('「' + d.domain + '」的指定链接已生成，复制发给该网站使用（重复生成会更换旧链接）：', '指定链接', d.url, function () {});
+        } else uiAlert(d.message, '生成失败');
       });
   };
 });
 document.querySelectorAll('.delsite').forEach(function (btn) {
   btn.onclick = function () {
-    if (!confirm('移除后该网站将不再显示在列表中（不影响其卡密），确定移除？')) return;
-    fetch('/admin/site/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+    uiConfirm('移除后该网站将不再显示在列表中（不影响其卡密），确定移除？', '移除网站', function (yes) {
+      if (yes) fetch('/admin/site/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+    });
   };
 });
 document.getElementById('pwd-toggle').onclick = function () {
@@ -168,6 +169,52 @@ document.getElementById('p-btn').onclick = function () {
       else { msg.textContent = d.message; b.disabled = false; }
     });
 };
+</script>
+<div id="ui-modal" hidden style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(15,18,45,.45);">
+  <div style="width:min(92vw,420px);background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:system-ui,sans-serif;">
+    <h3 id="ui-title" style="margin:0 0 10px;font-size:17px;color:#1f2340;">提示</h3>
+    <input id="ui-input" hidden style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;">
+    <p id="ui-text" style="margin:0;font-size:14px;color:#4a4f68;line-height:1.6;word-break:break-all;"></p>
+    <div id="ui-btns" style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end;">
+      <button id="ui-cancel" hidden style="padding:8px 18px;border:1px solid #dcdff0;border-radius:8px;background:#fff;cursor:pointer;">取消</button>
+      <button id="ui-ok" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;cursor:pointer;">确定</button>
+    </div>
+  </div>
+</div>
+<script>
+function uiAlert(text, title) {
+  var m = document.getElementById('ui-modal');
+  document.getElementById('ui-title').textContent = title || '提示';
+  document.getElementById('ui-text').textContent = text;
+  document.getElementById('ui-input').hidden = true;
+  document.getElementById('ui-cancel').hidden = true;
+  document.getElementById('ui-ok').textContent = '确定';
+  m.hidden = false;
+  document.getElementById('ui-ok').onclick = function () { m.hidden = true; };
+}
+function uiPrompt(text, title, value, cb) {
+  var m = document.getElementById('ui-modal'), inp = document.getElementById('ui-input');
+  document.getElementById('ui-title').textContent = title || '输入';
+  document.getElementById('ui-text').textContent = text;
+  inp.hidden = false; inp.value = value || '';
+  document.getElementById('ui-cancel').hidden = false;
+  document.getElementById('ui-ok').textContent = '确定';
+  m.hidden = false;
+  inp.select();
+  document.getElementById('ui-ok').onclick = function () { m.hidden = true; cb(inp.value); };
+  document.getElementById('ui-cancel').onclick = function () { m.hidden = true; };
+}
+function uiConfirm(text, title, cb) {
+  var m = document.getElementById('ui-modal');
+  document.getElementById('ui-title').textContent = title || '确认';
+  document.getElementById('ui-text').textContent = text;
+  document.getElementById('ui-input').hidden = true;
+  document.getElementById('ui-cancel').hidden = false;
+  document.getElementById('ui-ok').textContent = '确定';
+  m.hidden = false;
+  document.getElementById('ui-ok').onclick = function () { m.hidden = true; cb(true); };
+  document.getElementById('ui-cancel').onclick = function () { m.hidden = true; cb(false); };
+}
 </script>
 </body>
 </html>

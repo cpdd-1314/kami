@@ -108,7 +108,7 @@ def check_card(code: str, domain: str | None = None):
     row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
     conn.close()
     if not row:
-        return False, "卡密不存在", None
+        return False, "卡密无效", None
     if row["site_domain"] and domain and row["site_domain"] != domain:
         return False, f"该卡密仅限 {row['site_domain']} 使用", None
     if row["status"] == "used":
@@ -120,7 +120,7 @@ def check_card(code: str, domain: str | None = None):
                 return True, "有效", exp
         except ValueError:
             pass
-        return False, "卡密已过期，请重新输入", None
+        return False, "卡密已过期", None
     return False, "卡密未激活", None
 
 
@@ -130,7 +130,7 @@ def verify_card(code: str, user: str = "", domain: str | None = None):
     row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
     if not row:
         conn.close()
-        return False, "卡密不存在，请检查输入", None
+        return False, "卡密无效", None
     # 站点绑定检查
     if row["site_domain"] and domain and row["site_domain"] != domain:
         conn.close()
@@ -146,7 +146,7 @@ def verify_card(code: str, user: str = "", domain: str | None = None):
             except ValueError:
                 pass
         conn.close()
-        return False, "卡密已被使用或已过期", None
+        return False, "卡密已过期", None
     # 激活
     expire_at = (
         (now + timedelta(days=row["duration_days"])).isoformat(timespec="seconds")
