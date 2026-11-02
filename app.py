@@ -175,7 +175,7 @@ async def embed_js(request: Request):
     import json
     base = str(request.base_url).rstrip("/")
     site = request.query_params.get("site") or ""
-    t = db.site_theme(site or None)
+    t = dict(db.THEME_DEFAULT)  # 弹窗样式系统统一
     js = (
         EMBED_JS.replace("%BASE%", base)
         .replace("%SITE%", site)
@@ -277,23 +277,6 @@ async def logout(kami_session: str | None = Cookie(None)):
     resp = RedirectResponse("/admin")
     resp.delete_cookie("kami_session")
     return resp
-
-
-@app.post("/admin/site/theme/{site_id}")
-async def admin_site_theme(
-    site_id: int,
-    kami_session: str | None = Cookie(None),
-    title: str = Form(""),
-    sub: str = Form(""),
-    btn: str = Form(""),
-    color: str = Form(""),
-):
-    if not require_auth(kami_session):
-        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
-    if color and not color.startswith("#"):
-        return JSONResponse({"ok": False, "message": "颜色需为 #RRGGBB 格式"}, status_code=400)
-    db.set_site_theme(site_id, title, sub, btn, color)
-    return {"ok": True}
 
 
 @app.post("/admin/site/link/{site_id}")
