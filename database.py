@@ -383,6 +383,14 @@ def normalize_domain(raw: str) -> str:
     return d
 
 
+def site_exists(domain: str) -> bool:
+    conn = get_conn()
+    _ensure_site_columns(conn)
+    row = conn.execute("SELECT 1 FROM sites WHERE domain=?", (normalize_domain(domain),)).fetchone()
+    conn.close()
+    return bool(row)
+
+
 def add_site(raw_domain: str, note: str = "", unlock_mode: str | None = None, lang: str = "") -> tuple[bool, str, dict | None]:
     """手动新增接入网站。返回 (是否成功, 提示, 网站信息 dict)"""
     domain = normalize_domain(raw_domain)

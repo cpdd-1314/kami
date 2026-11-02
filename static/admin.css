@@ -157,3 +157,14 @@ td.ops a { text-decoration: none; }
 /* 跳转定位后的高亮闪烁 */
 @keyframes flash-bg { 0% { box-shadow: 0 0 0 3px rgba(99,102,241,.5); } 100% { box-shadow: 0 4px 14px rgba(30,30,80,.06); } }
 .flash { animation: flash-bg 1.1s ease; }
+
+/* 绑定网站下拉（与输入框同风格） */
+.gen-row select {
+  padding: 8px 10px; border: 1.5px solid #dcdff0; border-radius: 8px;
+  font-size: 14px; background: #fff; color: #1f2340; width: 160px; cursor: pointer;
+}
+.gen-row select:disabled { background: #f4f5fb; color: #a0a4bb; cursor: not-allowed; }
+.gen-row select:focus { outline: none; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+@media (max-width: 720px) {
+  .gen-row select { width: 100%; font-size: 16px; }
+}

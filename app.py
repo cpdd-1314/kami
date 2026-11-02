@@ -208,6 +208,12 @@ async def generate(
 ):
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    site_domain = db.normalize_domain(site_domain)
+    if site_domain and not db.site_exists(site_domain):
+        return JSONResponse(
+            {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先在「添加网站」中登记"},
+            status_code=400,
+        )
     codes = db.create_cards(count, duration_days, note, site_domain or None)
     return {"ok": True, "codes": codes}
 

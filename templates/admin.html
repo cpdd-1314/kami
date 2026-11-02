@@ -44,11 +44,22 @@
     <div class="gen-row">
       <label>数量 <input id="g-count" type="number" value="10" min="1" max="500"></label>
       <label>有效天数 <input id="g-days" type="number" value="30" min="0">（0=永久）</label>
-      <label>绑定网站 <input id="g-site" placeholder="留空=全网通用"></label>
+      <label>绑定网站
+        <select id="g-site" {% if not sites %}disabled{% endif %}>
+          <option value="">全网通用</option>
+          {% for s in sites %}
+          <option value="{{ s.domain }}" data-note="{{ s.note or '' }}">{{ s.domain }}</option>
+          {% endfor %}
+        </select>
+      </label>
       <label>备注 <input id="g-note" placeholder="选填"></label>
       <button id="g-btn">生成</button>
     </div>
     <pre id="g-result" hidden></pre>
+    {% if not sites %}
+    <p class="hint" style="margin:10px 0 0;">还没有接入任何网站，绑定网站只能选「全网通用」。
+      先到下方 <a href="#sec-sites" onclick="document.getElementById('add-site-btn').click();return false;">接入的网站 → + 添加网站</a> 添加后再来生成。</p>
+    {% endif %}
   </div>
 
   <div class="panel" id="sec-cards">
