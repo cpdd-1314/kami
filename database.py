@@ -100,6 +100,10 @@ def create_cards(count: int, duration_days: int, note: str = "", site_domain: st
     conn.close()
     return codes
 
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
 
 def check_card(code: str, domain: str | None = None):
     """回访校验（不激活、不扣次数）。返回 (ok, message, expire_at, key)"""
@@ -167,6 +171,10 @@ def verify_card(code: str, user: str = "", domain: str | None = None):
     conn.close()
     return True, "验证成功", expire_at, "ok"
 
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
 
 def list_cards(status: str | None = None, q: str | None = None):
     conn = get_conn()
@@ -212,6 +220,10 @@ def delete_card(card_id: int):
     conn.execute("DELETE FROM cards WHERE id=?", (card_id,))
     conn.commit()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
 
 
 def change_password(username: str, old_pwd: str, new_pwd: str) -> tuple[bool, str]:
@@ -230,6 +242,10 @@ def change_password(username: str, old_pwd: str, new_pwd: str) -> tuple[bool, st
     )
     conn.commit()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
     return True, "密码修改成功，请重新登录"
 
 
@@ -278,6 +294,10 @@ def set_site_unlock_mode(site_id: int, mode: str):
     conn.execute("UPDATE sites SET unlock_mode=? WHERE id=?", (mode, site_id))
     conn.commit()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
     return True
 
 
@@ -288,6 +308,10 @@ def set_site_lang(site_id: int, lang: str):
     conn.execute("UPDATE sites SET lang=? WHERE id=?", ((lang or "").strip() or None, site_id))
     conn.commit()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
     return True
 
 
@@ -307,6 +331,10 @@ def site_token(site_id: int) -> tuple[str, str] | None:
     if not row["token"]:
         conn.execute("UPDATE sites SET token=? WHERE id=?", (tok, site_id))
         conn.commit()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
     conn.close()
     return row["domain"], tok
 
@@ -364,6 +392,10 @@ def delete_site(site_id: int):
     conn.execute("DELETE FROM sites WHERE id=?", (site_id,))
     conn.commit()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
 
 
 APP_ID_RE = __import__("re").compile(r"^[a-z0-9][a-z0-9._-]{1,62}$")
@@ -429,4 +461,8 @@ def add_site(raw_domain: str, note: str = "", unlock_mode: str | None = None, la
     conn.commit()
     row = conn.execute("SELECT * FROM sites WHERE domain=?", (domain,)).fetchone()
     conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
     return True, "添加成功", dict(row) if row else None

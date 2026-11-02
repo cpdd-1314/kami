@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 
 import database as db
 import snippets
+import backup
 
 BASE_DIR = Path(__file__).parent
 app = FastAPI(title="卡密系统")
@@ -20,7 +21,15 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
+# 数据库持久化：Render 免费实例重启会丢文件，用 GitHub 私有仓库自动备份/恢复
+# 注意：必须先恢复再 init_db，否则空库会阻止恢复
+try:
+    backup.restore_if_missing()
+except Exception as e:
+    print("[backup] 恢复失败:", e)
+
 db.init_db()
+backup.start()
 
 # 简易内存 session 与防刷
 SESSIONS: dict[str, str] = {}

@@ -10,4 +10,12 @@ services:
         value: 3.12.9
       - key: KAMI_DB_PATH
         value: /opt/render/project/src/kami.db
+      # ===== 数据库自动备份（防止部署/重启后卡密和网站消失）=====
+      # 需在 Render 控制台手动添加以下两个环境变量：
+      # GITHUB_TOKEN     = 你的 GitHub Token（需要 repo 权限）
+      # KAMI_BACKUP_REPO = 备份用的私有仓库，如 cpdd-1314/kami-db（不存在会自动创建）
+      - key: KAMI_BACKUP_REPO
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
     healthCheckPath: /
