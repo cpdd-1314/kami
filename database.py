@@ -323,11 +323,12 @@ DEFAULT_MODE = "blur"
 
 
 def _ensure_site_columns(conn):
-    """站点扩展列（解锁方式、接入语言、指定链接 token）"""
+    """站点扩展列（解锁方式、接入语言、作者面板 token / 自定义后缀）"""
     for col, typ in (
         ("unlock_mode", "TEXT"),
         ("lang", "TEXT"),
         ("token", "TEXT"),
+        ("panel_slug", "TEXT"),
     ):
         try:
             conn.execute(f"ALTER TABLE sites ADD COLUMN {col} {typ}")
@@ -406,11 +407,27 @@ def site_token(site_id: int) -> tuple[str, str] | None:
 
 
 def site_by_token(token: str):
+    """按面板 token 或自定义后缀查找站点域名"""
     conn = get_conn()
     _ensure_token_column(conn)
-    row = conn.execute("SELECT domain FROM sites WHERE token=?", (token,)).fetchone()
+    row = conn.execute(
+        "SELECT domain FROM sites WHERE token=? OR IFNULL(panel_slug,'')=?", (token, token)
+    ).fetchone()
     conn.close()
     return row["domain"] if row else None
+
+
+def set_panel_slug(site_id: int, slug: str) -> tuple[bool, str]:
+    """设置作者面板自定义后缀。返回 (ok, message)"""
+    conn = get_conn()
+    _ensure_token_column(conn)
+    if conn.execute("SELECT 1 FROM sites WHERE IFNULL(panel_slug,'')=? AND id!=?", (slug, site_id)).fetchone():
+        conn.close()
+        return False, f"后缀「{slug}」已被其他网站使用"
+    conn.execute("UPDATE sites SET panel_slug=? WHERE id=?", (slug, site_id))
+    conn.commit()
+    conn.close()
+    return True, "ok"
 
 
 def list_sites():

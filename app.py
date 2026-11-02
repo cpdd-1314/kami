@@ -150,19 +150,6 @@ async def panel_generate(request: Request, token: str = Form(""), count: int = F
     return {"ok": True, "codes": codes}
 
 
-@app.get("/s/{token}", response_class=HTMLResponse)
-async def site_page(token: str, request: Request):
-    """网站指定链接：验证页绑定到该网站，只能用该网站（或通用）的卡密"""
-    domain = db.site_by_token(token)
-    if not domain:
-        return PlainTextResponse("链接无效或已失效", status_code=404)
-    st = db.site_settings(domain)
-    return templates.TemplateResponse(
-        "index.html",
-        {"request": request, "site": domain, "mode": st["unlock_mode"], "site_lang": st["lang"]},
-    )
-
-
 @app.post("/api/verify")
 async def verify(request: Request, code: str = Form(""), site: str = Form(""), device: str = Form("")):
     ip = client_ip(request)
@@ -441,9 +428,10 @@ async def logout(kami_session: str | None = Cookie(None)):
     return resp
 
 
-@app.post("/admin/site/link/{site_id}")
-async def admin_site_link(site_id: int, request: Request, kami_session: str | None = Cookie(None)):
-    """为指定网站生成「指定链接」（admin 自选是否生成；重复调用会轮换 token）"""
+@app.post("/admin/site/panel/{site_id}")
+async def admin_site_panel(site_id: int, request: Request, kami_session: str | None = Cookie(None),
+                           slug: str = Form("")):
+    """设置作者面板链接。slug 为空 → 使用/生成随机地址；自定义后缀仅限字母数字-_"""
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
     r = db.site_token(site_id)
@@ -451,9 +439,15 @@ async def admin_site_link(site_id: int, request: Request, kami_session: str | No
         return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
     domain, tok = r
     base = base_url(request)
-    return {"ok": True, "domain": domain,
-            "url": f"{base}/s/{tok}",
-            "panel": f"{base}/panel/{tok}"}
+    slug = (slug or "").strip()
+    if slug:
+        import re as _re
+        if not _re.fullmatch(r"[A-Za-z0-9_-]{3,40}", slug):
+            return JSONResponse({"ok": False, "message": "后缀只能用 3~40 位字母、数字、- 或 _"}, status_code=400)
+        ok, msg = db.set_panel_slug(site_id, slug)
+        if not ok:
+            return JSONResponse({"ok": False, "message": msg}, status_code=400)
+    return {"ok": True, "domain": domain, "panel": f"{base}/panel/{slug or tok}"}
 
 
 @app.post("/admin/site/delete/{site_id}")
