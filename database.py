@@ -233,6 +233,52 @@ def change_password(username: str, old_pwd: str, new_pwd: str) -> tuple[bool, st
     return True, "密码修改成功，请重新登录"
 
 
+THEME_DEFAULT = {"title": "请输入卡密", "sub": "验证通过后即可查看本页内容", "btn": "验 证", "color": "#6366f1"}
+
+
+def _ensure_theme_columns(conn):
+    for col in ("theme_title", "theme_sub", "theme_btn", "theme_color"):
+        try:
+            conn.execute(f"ALTER TABLE sites ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
+
+
+def site_theme(domain: str | None) -> dict:
+    """读取网站自定义弹窗样式，未设置则用默认。"""
+    t = dict(THEME_DEFAULT)
+    if not domain:
+        return t
+    conn = get_conn()
+    _ensure_theme_columns(conn)
+    row = conn.execute(
+        "SELECT theme_title, theme_sub, theme_btn, theme_color FROM sites WHERE domain=?",
+        (domain,),
+    ).fetchone()
+    conn.close()
+    if row:
+        if row["theme_title"]:
+            t["title"] = row["theme_title"]
+        if row["theme_sub"]:
+            t["sub"] = row["theme_sub"]
+        if row["theme_btn"]:
+            t["btn"] = row["theme_btn"]
+        if row["theme_color"]:
+            t["color"] = row["theme_color"]
+    return t
+
+
+def set_site_theme(site_id: int, title: str, sub: str, btn: str, color: str):
+    conn = get_conn()
+    _ensure_theme_columns(conn)
+    conn.execute(
+        "UPDATE sites SET theme_title=?, theme_sub=?, theme_btn=?, theme_color=? WHERE id=?",
+        (title.strip() or None, sub.strip() or None, btn.strip() or None, color.strip() or None, site_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def _ensure_token_column(conn):
     try:
         conn.execute("ALTER TABLE sites ADD COLUMN token TEXT")

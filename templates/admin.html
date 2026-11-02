@@ -94,6 +94,7 @@
           <td>
             <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
             <button class="sitelink" data-id="{{ s.id }}">生成指定链接</button>
+            <button class="themebtn" data-id="{{ s.id }}" data-title="{{ s.theme_title or '' }}" data-sub="{{ s.theme_sub or '' }}" data-btn="{{ s.theme_btn or '' }}" data-color="{{ s.theme_color or '#6366f1' }}">弹窗样式</button>
             <button class="delsite" data-id="{{ s.id }}">移除</button>
           </td>
         </tr>
@@ -215,6 +216,69 @@ function uiConfirm(text, title, cb) {
   document.getElementById('ui-ok').onclick = function () { m.hidden = true; cb(true); };
   document.getElementById('ui-cancel').onclick = function () { m.hidden = true; cb(false); };
 }
+</script>
+<div id="theme-modal" hidden style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(15,18,45,.45);">
+  <div style="width:min(92vw,440px);background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:system-ui,sans-serif;">
+    <h3 style="margin:0 0 6px;font-size:17px;color:#1f2340;">弹窗样式 - <span id="th-domain"></span></h3>
+    <p style="margin:0 0 14px;font-size:12px;color:#8a8fa8;">提示文案（卡密无效/已过期/有效期）由系统统一控制，仅外观可自定义；留空用默认。</p>
+    <label style="display:block;font-size:13px;margin-bottom:10px;">标题<input id="th-title" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;margin-top:4px;"></label>
+    <label style="display:block;font-size:13px;margin-bottom:10px;">副标题<input id="th-sub" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;margin-top:4px;"></label>
+    <label style="display:block;font-size:13px;margin-bottom:10px;">按钮文字<input id="th-btn" style="width:100%;box-sizing:border-box;padding:9px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;margin-top:4px;"></label>
+    <label style="display:block;font-size:13px;margin-bottom:14px;">主题色<input id="th-color" type="color" style="width:60px;height:34px;border:none;border-radius:8px;background:none;cursor:pointer;vertical-align:middle;margin-top:4px;"> <code id="th-colorhex" style="font-size:13px;"></code></label>
+    <div style="border-radius:12px;padding:20px;background:#f6f7fd;text-align:center;margin-bottom:14px;">
+      <div style="font-size:30px;">🔑</div>
+      <div id="th-pv-title" style="font-size:17px;font-weight:700;color:#1f2340;margin-top:8px;"></div>
+      <div id="th-pv-sub" style="font-size:12px;color:#8a8fa8;"></div>
+      <div id="th-pv-btn" style="margin:12px auto 0;width:70%;padding:10px;border-radius:10px;color:#fff;font-size:14px;"></div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button id="th-cancel" style="padding:8px 18px;border:1px solid #dcdff0;border-radius:8px;background:#fff;cursor:pointer;">取消</button>
+      <button id="th-save" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;cursor:pointer;">保存</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var curId = null;
+  function pv() {
+    var c = document.getElementById('th-color').value;
+    document.getElementById('th-colorhex').textContent = c;
+    document.getElementById('th-pv-title').textContent = document.getElementById('th-title').value || '请输入卡密';
+    document.getElementById('th-pv-sub').textContent = document.getElementById('th-sub').value || '验证通过后即可查看本页内容';
+    var b = document.getElementById('th-pv-btn');
+    b.textContent = document.getElementById('th-btn').value || '验 证';
+    b.style.background = 'linear-gradient(135deg,' + c + ',' + c + 'cc)';
+  }
+  document.querySelectorAll('.themebtn').forEach(function (btn) {
+    btn.onclick = function () {
+      curId = btn.dataset.id;
+      document.getElementById('th-domain').textContent = btn.closest('tr').querySelector('.code').textContent;
+      document.getElementById('th-title').value = btn.dataset.title;
+      document.getElementById('th-sub').value = btn.dataset.sub;
+      document.getElementById('th-btn').value = btn.dataset.btn;
+      document.getElementById('th-color').value = btn.dataset.color || '#6366f1';
+      pv();
+      document.getElementById('theme-modal').hidden = false;
+    };
+  });
+  ['th-title','th-sub','th-btn'].forEach(function (id) {
+    document.getElementById(id).oninput = pv;
+  });
+  document.getElementById('th-color').oninput = pv;
+  document.getElementById('th-cancel').onclick = function () { document.getElementById('theme-modal').hidden = true; };
+  document.getElementById('th-save').onclick = function () {
+    var body = 'title=' + encodeURIComponent(document.getElementById('th-title').value)
+             + '&sub=' + encodeURIComponent(document.getElementById('th-sub').value)
+             + '&btn=' + encodeURIComponent(document.getElementById('th-btn').value)
+             + '&color=' + encodeURIComponent(document.getElementById('th-color').value);
+    fetch('/admin/site/theme/' + curId, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.ok) { document.getElementById('theme-modal').hidden = true; uiAlert('弹窗样式已保存，该网站下次加载即生效', '保存成功'); }
+        else uiAlert(d.message, '保存失败');
+      });
+  };
+})();
 </script>
 </body>
 </html>

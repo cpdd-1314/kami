@@ -95,6 +95,10 @@ async def check(request: Request, code: str = Form(""), site: str = Form("")):
 EMBED_JS = """(function () {
   var KC = 'kami_code';
   var SITE = '%SITE%';
+  var T_TITLE = %TITLE%;
+  var T_SUB = %SUB%;
+  var T_BTN = %BTN%;
+  var T_COLOR = %COLOR%;
   function fmtExp(e) { return e ? '有效期至 ' + e.replace('T', ' ').slice(0, 16) : '永久有效'; }
   function toast(txt) {
     var t = document.createElement('div');
@@ -121,11 +125,11 @@ EMBED_JS = """(function () {
     var box = document.createElement('div');
     box.style.cssText = 'width:min(92vw,400px);background:#fff;border-radius:16px;padding:32px 28px;box-shadow:0 20px 60px rgba(80,60,180,.35);font-family:system-ui,-apple-system,sans-serif;text-align:center;';
     box.innerHTML = ''
-      + '<div style="font-size:40px;">\\u{1F511}</div>'
-      + '<h2 style="margin:10px 0 6px;color:#1f2340;font-size:22px;">\\u8bf7\\u8f93\\u5165\\u5361\\u5bc6</h2>'
-      + '<p style="margin:0 0 18px;color:#8a8fa8;font-size:13px;">' + (tip || '\\u9a8c\\u8bc1\\u901a\\u8fc7\\u540e\\u5373\\u53ef\\u67e5\\u770b\\u672c\\u9875\\u5185\\u5bb9') + '</p>'
-      + '<input id="kami-code" placeholder="XXXX-XXXX-XXXX-XXXX" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #dcdff0;border-radius:10px;font-size:16px;letter-spacing:2px;text-align:center;outline:none;transition:border-color .2s;" />'
-      + '<button id="kami-btn" style="margin-top:14px;width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-size:16px;cursor:pointer;">\\u9a8c \\u8bc1</button>'
+      + '<div style="width:74px;height:74px;margin:0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:34px;background:linear-gradient(135deg,' + T_COLOR + '22,' + T_COLOR + '11);box-shadow:0 10px 24px ' + T_COLOR + '33;">\\u{1F511}</div>'
+      + '<h2 style="margin:14px 0 6px;color:#1f2340;font-size:21px;">' + T_TITLE + '</h2>'
+      + '<p style="margin:0 0 20px;color:#8a8fa8;font-size:13px;">' + (tip || T_SUB) + '</p>'
+      + '<input id="kami-code" placeholder="XXXX-XXXX-XXXX-XXXX" style="width:100%;box-sizing:border-box;padding:13px 14px;border:1.5px solid #dcdff0;border-radius:12px;font-size:16px;letter-spacing:2px;text-align:center;outline:none;transition:border-color .2s,box-shadow .2s;background:#fafbff;" />'
+      + '<button id="kami-btn" style="margin-top:14px;width:100%;padding:13px;border:none;border-radius:12px;background:linear-gradient(135deg,' + T_COLOR + ',' + T_COLOR + 'cc);color:#fff;font-size:16px;font-weight:600;letter-spacing:6px;cursor:pointer;box-shadow:0 8px 20px ' + T_COLOR + '55;">' + T_BTN + '</button>'
       + '<p id="kami-msg" style="min-height:18px;margin:12px 0 0;color:#ef4444;font-size:13px;"></p>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
@@ -136,14 +140,14 @@ EMBED_JS = """(function () {
     function submit() {
       var code = input.value.trim();
       if (!code) { msg.textContent = '\\u8bf7\\u8f93\\u5165\\u5361\\u5bc6'; shake(); return; }
-      btn.disabled = true; btn.textContent = '\\u9a8c\\u8bc1\\u4e2d...';
+      btn.disabled = true; btn.textContent = T_BTN + '...';
       post('%BASE%/api/verify', code, function (d) {
         if (d.ok) {
           localStorage.setItem(KC, code);
           unlock();
           toast('✓ 卡密有效，' + fmtExp(d.expire_at));
         } else { msg.textContent = d.message || '卡密无效'; shake(); }
-        btn.disabled = false; btn.textContent = '\\u9a8c \\u8bc1';
+        btn.disabled = false; btn.textContent = T_BTN;
       });
     }
     btn.onclick = submit;
@@ -168,9 +172,18 @@ EMBED_JS = """(function () {
 
 @app.get("/embed.js")
 async def embed_js(request: Request):
+    import json
     base = str(request.base_url).rstrip("/")
     site = request.query_params.get("site") or ""
-    js = EMBED_JS.replace("%BASE%", base).replace("%SITE%", site)
+    t = db.site_theme(site or None)
+    js = (
+        EMBED_JS.replace("%BASE%", base)
+        .replace("%SITE%", site)
+        .replace("%TITLE%", json.dumps(t["title"], ensure_ascii=False))
+        .replace("%SUB%", json.dumps(t["sub"], ensure_ascii=False))
+        .replace("%BTN%", json.dumps(t["btn"], ensure_ascii=False))
+        .replace("%COLOR%", json.dumps(t["color"], ensure_ascii=False))
+    )
     return PlainTextResponse(js, media_type="application/javascript")
 
 
@@ -264,6 +277,23 @@ async def logout(kami_session: str | None = Cookie(None)):
     resp = RedirectResponse("/admin")
     resp.delete_cookie("kami_session")
     return resp
+
+
+@app.post("/admin/site/theme/{site_id}")
+async def admin_site_theme(
+    site_id: int,
+    kami_session: str | None = Cookie(None),
+    title: str = Form(""),
+    sub: str = Form(""),
+    btn: str = Form(""),
+    color: str = Form(""),
+):
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    if color and not color.startswith("#"):
+        return JSONResponse({"ok": False, "message": "颜色需为 #RRGGBB 格式"}, status_code=400)
+    db.set_site_theme(site_id, title, sub, btn, color)
+    return {"ok": True}
 
 
 @app.post("/admin/site/link/{site_id}")
