@@ -64,7 +64,7 @@
     <pre id="g-result" hidden></pre>
     {% if not sites %}
     <p class="hint" style="margin:10px 0 0;">还没有接入任何网站，绑定网站只能选「全网通用」。
-      先到下方 <a href="#sec-sites" onclick="document.getElementById('add-site-btn').click();return false;">接入的网站 → + 添加网站</a> 添加后再来生成。</p>
+      先到 <a href="#" onclick="showPage('sec-sites');setTimeout(function(){document.getElementById('add-site-btn').click();},0);return false;">接入的网站 → + 添加网站</a> 添加后再来生成。</p>
     {% endif %}
   </div>
 
@@ -245,6 +245,7 @@
     document.body.style.overflow = 'hidden';
   }
   function close() {
+    if (window.innerWidth > 720) return;  // 桌面侧栏常驻，不收起
     drawer.classList.remove('open');
     document.body.style.overflow = '';
     setTimeout(function () { drawer.hidden = true; mask.hidden = true; }, 240);
@@ -258,22 +259,33 @@
   document.querySelectorAll('.drawer a[data-jump]').forEach(function (a) {
     a.onclick = function (e) {
       e.preventDefault();
-      var el = document.getElementById(a.dataset.jump);
-      close();
-      if (!el) return;
-      setTimeout(function () {
-        var y = el.getBoundingClientRect().top + window.pageYOffset - 12;
-        window.scrollTo({ top: y, behavior: 'smooth' });
-        el.classList.remove('flash');
-        void el.offsetWidth;
-        el.classList.add('flash');
-      }, 250);
+      if (window.innerWidth <= 720) close();  // 手机收起抽屉；桌面左侧栏常驻
+      showPage(a.dataset.jump);
     };
   });
+  // ===== 页面切换：一次只显示一个页面 =====
+  var PAGES = ['sec-stats', 'sec-generate', 'sec-cards', 'sec-sites'];
+  window.showPage = function (id) {
+    PAGES.forEach(function (p) {
+      var el = document.getElementById(p);
+      if (el) el.style.display = (p === id) ? '' : 'none';
+    });
+    document.querySelectorAll('.drawer a[data-jump]').forEach(function (a) {
+      a.classList.toggle('active', a.dataset.jump === id);
+    });
+    try { sessionStorage.setItem('kami_page', id); } catch (e) {}
+    window.scrollTo({ top: 0 });
+  };
+  // 带搜索参数进入 → 直接落在卡密列表页；否则恢复刷新前的页面
+  var savedPage = null;
+  try { savedPage = sessionStorage.getItem('kami_page'); } catch (e) {}
+  if (/[?&]q=/.test(location.search)) showPage('sec-cards');
+  else showPage(savedPage && PAGES.indexOf(savedPage) >= 0 ? savedPage : 'sec-stats');
   var menuAdd = document.getElementById('menu-add-site');
   if (menuAdd) menuAdd.onclick = function (e) {
     e.preventDefault();
-    close();
+    if (window.innerWidth <= 720) close();
+    showPage('sec-sites');
     var form = document.getElementById('add-site-form');
     form.hidden = false;
     setTimeout(function () {

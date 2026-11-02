@@ -77,6 +77,20 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
 .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .table-scroll table { min-width: 660px; }
 
+/* ===== 页面切换：左侧功能按钮 ===== */
+.drawer a.active { background: #eef2ff; color: #2563eb; font-weight: 600; }
+@media (min-width: 721px) {
+  /* 桌面端：左侧功能栏常驻 */
+  .drawer {
+    top: 55px; bottom: 0; right: auto; left: 0;
+    width: 212px; border-radius: 0; box-shadow: none;
+    border-right: 1px solid #eceef8; transform: none !important;
+  }
+  .drawer-mask, .menu-btn { display: none !important; }
+  .drawer[hidden] { display: block; }
+  .wrap { margin-left: 236px; }
+}
+
 /* ===== 手机端适配 ===== */
 @media (max-width: 720px) {
   .topbar { padding: 12px 14px; gap: 12px; }
