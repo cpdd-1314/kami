@@ -113,7 +113,12 @@
 
     <div class="add-site-form" id="add-site-form" hidden>
       <div class="gen-row">
-        <label>网站域名 <input id="a-domain" placeholder="example.com 或 https://example.com"></label>
+        <label>网站域名 / App 标识
+          <span class="input-with-btn">
+            <input id="a-domain" placeholder="网站填 example.com；App 可点右边「自动生成」">
+            <button type="button" class="gen-id" id="gen-id" title="不知道填什么就点这里">自动生成</button>
+          </span>
+        </label>
         <label>解锁方式
           <select id="a-mode">
             <option value="blur">锁屏模糊</option>
@@ -151,6 +156,8 @@
         <button id="a-save">保存</button>
       </div>
       <p id="a-msg" class="form-msg"></p>
+      <p class="form-tip">不知道怎么填？<b>网站</b>看浏览器地址栏，去掉 <code>https://</code> 和后面的路径，如 <code>mysite.com</code>；
+        <b>App 或随便用</b>直接点「自动生成」，会得到一个不用记的通用标识（如 <code>app-k3f9x2</code>），把它填进 App 代码里就行。</p>
     </div>
 
     <p class="hint">每个网站可单独设置 <b>解锁方式</b> 与 <b>语言</b>，改完立即生效，该网站所有访客都使用同一套。</p>
@@ -335,7 +342,10 @@ document.querySelectorAll('.sitepick').forEach(function (btn) {
         + 'Header: X-Kami-Code: 卡密\n'
         + '        X-Kami-App: ' + d + '\n\n'
         + '返回 JSON：{"ok":true,"expire_at":"2026-12-01T10:00:00","expire_text":"2026-12-01 10:00","days_left":29}\n'
-        + 'ok=false 时 message 说明原因（无效/过期/未激活/仅限其他App）';
+        + 'ok=false 时 message 说明原因（无效/过期/未激活/仅限其他App）\n\n'
+        + '—— 说明 ——\n'
+        + '上文的 ' + d + ' 就是「App 标识」，不用自己编，后台点「自动生成」得到的那个照抄即可。\n'
+        + 'App 只要把这两句填进去：接口地址 + 标识，其余逻辑照抄上面的。';
     } else {
       text = '【网站接入：' + d + '】\n\n'
         + '<script src="' + KAMI_BASE + '/embed.js?site=' + d + '"><\/script>\n\n'
@@ -357,6 +367,19 @@ document.getElementById('add-site-btn').onclick = function () {
   addForm.hidden = !addForm.hidden;
   if (!addForm.hidden) document.getElementById('a-domain').focus();
 };
+// 自动生成一个通用 App 标识（不用记、不用懂英文）
+document.getElementById('gen-id').onclick = function () {
+  var chars = 'abcdefghijkmnpqrstuvwxyz23456789';
+  var out = 'app-';
+  var rnd = new Uint8Array(6);
+  (window.crypto || window.msCrypto).getRandomValues(rnd);
+  for (var i = 0; i < rnd.length; i++) out += chars[rnd[i] % chars.length];
+  var inp = document.getElementById('a-domain');
+  inp.value = out;
+  var msg = document.getElementById('a-msg');
+  msg.style.color = '#16a34a';
+  msg.textContent = '已生成通用标识「' + out + '」，直接保存即可；App 代码里用这个标识。';
+};
 document.getElementById('a-save').onclick = function () {
   var b = this, msg = document.getElementById('a-msg');
   var domain = document.getElementById('a-domain').value.trim();
@@ -372,7 +395,11 @@ document.getElementById('a-save').onclick = function () {
     .then(function (d) {
       b.disabled = false;
       if (d.ok) {
-        uiAlert('已添加「' + d.domain + '」。\n\n把下面这行放进该网站的页面里即可生效：\n\n' + d.embed, '添加成功', function () { location.reload(); });
+        var body = d.is_app
+          ? '已添加 App「' + d.domain + '」。\n\nApp 里调用下面这个接口（标识照抄即可）：\n\n'
+            + 'POST ' + d.api + '\nX-Kami-Code: 卡密\nX-Kami-App: ' + d.domain
+          : '已添加「' + d.domain + '」。\n\n把下面这行放进该网站的页面里即可生效：\n\n' + d.embed;
+        uiAlert(body, '添加成功', function () { location.reload(); });
       } else { msg.textContent = d.message || '添加失败'; }
     })
     .catch(function () { b.disabled = false; msg.textContent = '网络错误，请重试'; });

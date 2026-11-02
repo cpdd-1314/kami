@@ -390,6 +390,8 @@ async def admin_site_add(
         "id": row["id"],
         "domain": row["domain"],
         "embed": f'<script src="{base}/embed.js?site={row["domain"]}"></script>',
+        "is_app": "." not in row["domain"],
+        "api": f"{base}/api/app/verify",
         "link": link,
     }
 
