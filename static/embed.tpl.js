@@ -207,7 +207,56 @@ function msgText(key, raw) {
     } else {
       build();
     }
+    startGuard();
   }
+
+  /* ---------- 每 5 分钟自动复核：中途失效立即重新上锁 ---------- */
+  var CHECK_INTERVAL = 5 * 60 * 1000;
+  var checking = false;
+
+  function relock(tip) {
+    /* 网站是自己的：卡密已失效，清掉本地保存，弹回验证框 */
+    try { localStorage.removeItem(KC); } catch (e) {}
+    saved = null;
+    unlock();
+    build(null, tip);
+  }
+
+  function startGuard() {
+    setInterval(function () {
+      if (checking) return;
+      var code = null;
+      try { code = localStorage.getItem(KC); } catch (e) {}
+      if (!code) return;               // 本来就没解锁，交给验证框处理
+      checking = true;
+      post(BASE + '/api/check', code, function (d) {
+        checking = false;
+        var overlayOpen = !!document.getElementById('kami-overlay');
+        if (d.ok) {
+          /* 依然有效：静默通过，不打扰用户 */
+          return;
+        }
+        if (!overlayOpen) {
+          /* 已解锁但卡密失效 → 立即上锁 */
+          relock(msgText(d.key || msgKey(d.message), d.message));
+        }
+        /* 弹窗已开着的情况由验证框自己的提交逻辑处理 */
+      });
+    }, CHECK_INTERVAL);
+    /* 页面从后台切回时立即复核一次（防止挂机绕过） */
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState !== 'visible') return;
+      var code = null;
+      try { code = localStorage.getItem(KC); } catch (e) {}
+      if (!code || document.getElementById('kami-overlay')) return;
+      post(BASE + '/api/check', code, function (d) {
+        if (!d.ok && !document.getElementById('kami-overlay')) {
+          relock(msgText(d.key || msgKey(d.message), d.message));
+        }
+      });
+    });
+  }
+
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startWithCheck);
   else startWithCheck();
 })();

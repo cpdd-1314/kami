@@ -129,6 +129,12 @@
     document.body.classList.remove('mode-blur', 'mode-dim', 'mode-lock');
     setTimeout(function () { overlay.style.display = 'none'; }, 220);
   }
+  function relock(tip) {
+    /* 5 分钟复核发现失效：清掉本地卡密，重新上锁 */
+    try { localStorage.removeItem(KC); } catch (e) {}
+    saved = null;
+    showOverlay(tip);
+  }
   function showOverlay(tip) {
     overlay.style.display = 'flex';
     overlay.classList.remove('hide');
@@ -167,9 +173,31 @@
   if (saved) {
     call('check', saved, function (d) {
       if (d.ok) { unlock(); toast('✓ ' + tr('ok') + ' · ' + fmtExp(d.expire_at)); }
-      else showOverlay(msgText(d.key || msgKey(d.message), d.message));
+      else relock(msgText(d.key || msgKey(d.message), d.message));
     });
   }
+
+  // ===== 每 5 分钟自动复核：中途失效立即重新上锁 =====
+  (function startGuard() {
+    var CHECK_INTERVAL = 5 * 60 * 1000, checking = false;
+    function guardCheck() {
+      if (checking) return;
+      var code = null;
+      try { code = localStorage.getItem(KC); } catch (e) {}
+      if (!code) return;
+      checking = true;
+      call('check', code, function (d) {
+        checking = false;
+        if (d.ok) return;  // 依然有效，静默通过
+        var open = overlay.style.display !== 'none' && !overlay.classList.contains('hide');
+        if (!open) relock(msgText(d.key || msgKey(d.message), d.message));
+      });
+    }
+    setInterval(guardCheck, CHECK_INTERVAL);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') guardCheck();
+    });
+  })();
 
   btn.onclick = submit;
   input.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
