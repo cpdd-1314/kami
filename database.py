@@ -192,6 +192,25 @@ def delete_card(card_id: int):
     conn.close()
 
 
+def change_password(username: str, old_pwd: str, new_pwd: str) -> tuple[bool, str]:
+    """修改管理员密码。返回 (是否成功, 提示信息)"""
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM admins WHERE username=?", (username,)).fetchone()
+    if not row or not check_password(old_pwd, row["password_hash"]):
+        conn.close()
+        return False, "原密码错误"
+    if len(new_pwd) < 6:
+        conn.close()
+        return False, "新密码至少 6 位"
+    conn.execute(
+        "UPDATE admins SET password_hash=? WHERE username=?",
+        (hash_password(new_pwd), username),
+    )
+    conn.commit()
+    conn.close()
+    return True, "密码修改成功，请重新登录"
+
+
 def list_sites():
     conn = get_conn()
     rows = [dict(r) for r in conn.execute("SELECT * FROM sites ORDER BY id DESC").fetchall()]

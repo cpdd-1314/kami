@@ -11,7 +11,8 @@
   <span class="logo">🔑 卡密管理后台</span>
   <a href="/admin/export">导出 CSV</a>
   <a href="/" target="_blank">查看前台</a>
-  <a href="/admin/logout" onclick="return false;" id="logout">退出</a>
+  <a href="#" id="pwd-toggle">修改密码</a>
+  <a href="/admin/logout">退出</a>
 </div>
 
 <div class="wrap">
@@ -65,6 +66,17 @@
     </table>
   </div>
 
+  <div class="panel" id="pwd-panel" hidden>
+    <h3>修改管理员密码</h3>
+    <div class="gen-row">
+      <label>原密码 <input id="p-old" type="password"></label>
+      <label>新密码 <input id="p-new" type="password" placeholder="至少 6 位"></label>
+      <label>确认新密码 <input id="p-new2" type="password"></label>
+      <button id="p-btn">保存</button>
+    </div>
+    <p id="p-msg" style="color:#ef4444;font-size:13px;min-height:18px;margin:8px 0 0;"></p>
+  </div>
+
   <div class="panel">
     <h3>接入的网站</h3>
     {% if sites %}
@@ -100,9 +112,26 @@ document.querySelectorAll('.del').forEach(function (btn) {
     fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
   };
 });
-document.getElementById('logout').onclick = function () {
-  document.cookie = 'kami_session=; Max-Age=0; path=/';
-  location.href = '/admin';
+document.getElementById('pwd-toggle').onclick = function () {
+  var p = document.getElementById('pwd-panel');
+  p.hidden = !p.hidden;
+};
+document.getElementById('p-btn').onclick = function () {
+  var b = this, msg = document.getElementById('p-msg');
+  var old = document.getElementById('p-old').value,
+      n1 = document.getElementById('p-new').value,
+      n2 = document.getElementById('p-new2').value;
+  msg.textContent = '';
+  if (!old || !n1) { msg.textContent = '请填写完整'; return; }
+  if (n1 !== n2) { msg.textContent = '两次输入的新密码不一致'; return; }
+  b.disabled = true;
+  var body = 'old_password=' + encodeURIComponent(old) + '&new_password=' + encodeURIComponent(n1);
+  fetch('/admin/change-password', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d.ok) { alert(d.message); location.href = '/admin'; }
+      else { msg.textContent = d.message; b.disabled = false; }
+    });
 };
 </script>
 </body>

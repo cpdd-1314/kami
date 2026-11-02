@@ -194,6 +194,35 @@ async def delete(card_id: int, kami_session: str | None = Cookie(None)):
     return {"ok": True}
 
 
+@app.post("/admin/change-password")
+async def change_password(
+    request: Request,
+    kami_session: str | None = Cookie(None),
+    old_password: str = Form(""),
+    new_password: str = Form(""),
+):
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    username = SESSIONS.get(kami_session, "admin")
+    ok, msg = db.change_password(username, old_password, new_password)
+    if not ok:
+        return JSONResponse({"ok": False, "message": msg}, status_code=400)
+    # 密码修改成功后使所有会话失效，强制重新登录
+    SESSIONS.clear()
+    resp = JSONResponse({"ok": True, "message": msg})
+    resp.delete_cookie("kami_session")
+    return resp
+
+
+@app.get("/admin/logout")
+async def logout(kami_session: str | None = Cookie(None)):
+    if kami_session:
+        SESSIONS.pop(kami_session, None)
+    resp = RedirectResponse("/admin")
+    resp.delete_cookie("kami_session")
+    return resp
+
+
 @app.get("/admin/export")
 async def export(kami_session: str | None = Cookie(None)):
     if not require_auth(kami_session):
