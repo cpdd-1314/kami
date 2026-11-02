@@ -438,8 +438,9 @@ document.getElementById('add-site-btn').onclick = function () {
 document.getElementById('gen-id').onclick = function () {
   var chars = 'abcdefghijkmnpqrstuvwxyz23456789';
   var out = 'app-';
-  var rnd = new Uint8Array(6);
-  (window.crypto || window.msCrypto).getRandomValues(rnd);
+  var rnd = [0, 0, 0, 0, 0, 0];
+  try { (window.crypto || window.msCrypto).getRandomValues(rnd); }
+  catch (e) { for (var j = 0; j < rnd.length; j++) rnd[j] = Math.floor(Math.random() * 256); }
   for (var i = 0; i < rnd.length; i++) out += chars[rnd[i] % chars.length];
   var inp = document.getElementById('a-domain');
   inp.value = out;
