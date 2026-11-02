@@ -9,21 +9,36 @@
 <body>
 <div class="topbar">
   <span class="logo">🔑 卡密管理后台</span>
-  <a href="/admin/export">导出 CSV</a>
-  <a href="/" target="_blank">查看前台</a>
-  <a href="#" id="pwd-toggle">修改密码</a>
-  <a href="/admin/logout">退出</a>
+  <nav class="nav-links">
+    <a href="/admin/export">导出 CSV</a>
+    <a href="/" target="_blank">查看前台</a>
+    <a href="#" id="pwd-toggle">修改密码</a>
+    <a href="/admin/logout">退出</a>
+  </nav>
+  <button class="menu-btn" id="menu-btn" aria-label="菜单">☰</button>
 </div>
+<div class="drawer-mask" id="drawer-mask" hidden></div>
+<aside class="drawer" id="drawer" hidden>
+  <div class="drawer-head">功能菜单</div>
+  <a href="#sec-stats" data-jump="sec-stats"><i>📊</i>数据概览</a>
+  <a href="#sec-generate" data-jump="sec-generate"><i>🎫</i>批量生成卡密</a>
+  <a href="#sec-cards" data-jump="sec-cards"><i>📋</i>卡密列表</a>
+  <a href="#sec-sites" data-jump="sec-sites"><i>🌐</i>接入的网站</a>
+  <a href="#" id="menu-pwd"><i>🔒</i>修改密码</a>
+  <a href="/admin/export"><i>⬇️</i>导出 CSV</a>
+  <a href="/" target="_blank"><i>👁️</i>查看前台</a>
+  <a href="/admin/logout" class="danger"><i>🚪</i>退出登录</a>
+</aside>
 
 <div class="wrap">
-  <div class="stat-grid">
+  <div class="stat-grid" id="sec-stats">
     <div class="stat"><b>{{ stats.total }}</b><span>卡密总数</span></div>
     <div class="stat"><b class="c-green">{{ stats.unused }}</b><span>未使用</span></div>
     <div class="stat"><b class="c-blue">{{ stats.used }}</b><span>已使用</span></div>
     <div class="stat"><b class="c-red">{{ stats.expired }}</b><span>已过期</span></div>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="sec-generate">
     <h3>批量生成卡密</h3>
     <div class="gen-row">
       <label>数量 <input id="g-count" type="number" value="10" min="1" max="500"></label>
@@ -35,7 +50,8 @@
     <pre id="g-result" hidden></pre>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="sec-cards">
+    <h3>卡密列表</h3>
     <form method="get" class="filter-row">
       <select name="status">
         <option value="">全部状态</option>
@@ -45,7 +61,7 @@
       <input name="q" value="{{ q }}" placeholder="搜索卡密/备注">
       <button type="submit">筛选</button>
     </form>
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>卡密</th><th>状态</th><th>有效天数</th><th>到期时间</th><th>使用者</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>
       {% for c in cards %}
@@ -63,7 +79,7 @@
         <tr><td colspan="8" class="empty">暂无卡密，请先生成</td></tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
   </div>
 
   <div class="panel" id="pwd-panel" hidden>
@@ -77,10 +93,10 @@
     <p id="p-msg" style="color:#ef4444;font-size:13px;min-height:18px;margin:8px 0 0;"></p>
   </div>
 
-  <div class="panel">
+  <div class="panel" id="sec-sites">
     <h3>接入的网站（{{ sites|length }}）</h3>
     {% if sites %}
-    <table>
+    <div class="table-scroll"><table>
       <thead><tr><th>域名</th><th>绑定卡密</th><th>未使用</th><th>激活次数</th><th>最近激活</th><th>登记时间</th><th>操作</th></tr></thead>
       <tbody>
       {% for s in sites %}
@@ -99,7 +115,7 @@
         </tr>
       {% endfor %}
       </tbody>
-    </table>
+    </table></div>
     {% else %}<p class="empty">暂无网站接入。在其他网站页面加入：<code>&lt;script src="本系统地址/embed.js"&gt;&lt;/script&gt;</code></p>{% endif %}
   </div>
 </div>

@@ -43,3 +43,62 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
 .del { background: #fee2e2; color: #b91c1c; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .empty { color: #8a8fa8; text-align: center; padding: 24px; }
 .panel code { background: #f1f2fb; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
+
+/* ===== 抽屉菜单 ===== */
+.menu-btn {
+  display: none; background: rgba(255,255,255,.18); color: #fff; border: none;
+  width: 38px; height: 38px; border-radius: 10px; font-size: 19px; cursor: pointer;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.menu-btn:active { background: rgba(255,255,255,.3); }
+.drawer-mask { position: fixed; inset: 0; background: rgba(15,18,45,.45); z-index: 900; }
+.drawer {
+  position: fixed; top: 0; right: 0; width: min(78vw, 300px); height: 100%;
+  background: #fff; z-index: 901; padding: 8px 0 20px;
+  box-shadow: -8px 0 40px rgba(20,20,60,.2);
+  transform: translateX(100%); transition: transform .26s cubic-bezier(.4,0,.2,1);
+  overflow-y: auto;
+}
+.drawer.open { transform: translateX(0); }
+.drawer-head {
+  padding: 18px 20px 12px; font-weight: 700; font-size: 15px; color: #1f2340;
+  border-bottom: 1px solid #eef0f8; margin-bottom: 6px;
+}
+.drawer a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 20px; color: #3d4260; text-decoration: none; font-size: 15px;
+  border-bottom: 1px solid #f4f5fb;
+}
+.drawer a:active { background: #f3f4ff; }
+.drawer a i { font-style: normal; font-size: 16px; width: 20px; text-align: center; }
+.drawer a.danger { color: #dc2626; }
+
+/* 表格横向滚动，杜绝手机溢出 */
+.table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll table { min-width: 660px; }
+
+/* ===== 手机端适配 ===== */
+@media (max-width: 720px) {
+  .topbar { padding: 12px 14px; gap: 12px; }
+  .topbar .logo { font-size: 15px; }
+  .nav-links { display: none; }
+  .menu-btn { display: inline-flex; }
+  .wrap { margin: 14px auto; padding: 0 10px; }
+  .stat-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  .stat { padding: 14px 8px; }
+  .stat b { font-size: 22px; }
+  .stat span { font-size: 12px; }
+  .panel { padding: 14px; border-radius: 10px; margin-bottom: 14px; }
+  .panel h3 { font-size: 15px; margin-bottom: 12px; }
+  /* 生成表单：每项占满宽度，输入框不再固定 140px */
+  .gen-row { flex-direction: column; align-items: stretch; gap: 10px; }
+  .gen-row label { width: 100%; }
+  .gen-row input { width: 100%; box-sizing: border-box; font-size: 16px; }
+  .gen-row button { width: 100%; padding: 12px; font-size: 15px; }
+  .filter-row { flex-wrap: wrap; gap: 8px; }
+  .filter-row select, .filter-row input { font-size: 16px; }
+  .filter-row input { flex: 1 1 100%; max-width: none; }
+  .filter-row button { flex: 1 1 100%; padding: 11px; }
+  th, td { padding: 8px 8px; font-size: 12.5px; white-space: nowrap; }
+  .del, .sitelink, .delsite, .themebtn { padding: 6px 10px !important; font-size: 12px !important; }
+}
