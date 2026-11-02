@@ -184,3 +184,103 @@ td.ops a { text-decoration: none; }
 @media (max-width: 720px) {
   .gen-id { padding: 12px 14px; font-size: 14px; }
 }
+
+/* ===== 通用弹窗（自适应高度，绝不超出屏幕）===== */
+.ui-mask {
+  position: fixed; inset: 0; z-index: 9999; display: none;
+  align-items: center; justify-content: center;
+  background: rgba(15,18,45,.45); padding: 16px;
+}
+.ui-mask.show { display: flex; }
+.ui-box {
+  width: min(94vw, 520px);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
+  display: flex; flex-direction: column;
+  background: #fff; border-radius: 14px; overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0,0,0,.3);
+  font-family: system-ui, -apple-system, "PingFang SC", sans-serif;
+  animation: ui-pop .2s ease;
+}
+@keyframes ui-pop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+.ui-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 18px 10px; flex-shrink: 0;
+}
+.ui-head h3 { margin: 0; font-size: 16.5px; color: #1f2340; flex: 1; }
+.ui-x {
+  width: 30px; height: 30px; flex-shrink: 0; border: none; border-radius: 8px;
+  background: #f3f4fb; color: #8a8fa8; font-size: 19px; line-height: 1; cursor: pointer;
+}
+.ui-x:active { background: #e8eaf6; }
+.ui-body { padding: 0 18px; overflow-y: auto; overflow-x: hidden; flex: 1 1 auto; min-height: 0; -webkit-overflow-scrolling: touch; }
+#ui-input {
+  width: 100%; box-sizing: border-box; padding: 10px 12px;
+  border: 1.5px solid #dcdff0; border-radius: 8px; font-size: 14px; margin-bottom: 10px;
+}
+#ui-text {
+  margin: 0; font-size: 13px; color: #4a4f68; line-height: 1.75;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+}
+#ui-text.wrap { white-space: pre-wrap; font-family: system-ui, sans-serif; font-size: 14px; }
+.ui-btns {
+  display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0;
+  padding: 14px 18px 16px;
+  border-top: 1px solid #f0f1f8; margin-top: 12px; background: #fff;
+}
+.ui-btns button {
+  padding: 9px 18px; border-radius: 8px; cursor: pointer; font-size: 14px;
+  border: 1px solid #dcdff0; background: #fff; color: #3d4260; white-space: nowrap;
+}
+.ui-btns #ui-ok {
+  border: none; background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff;
+}
+.ui-btns #ui-copy { background: #eef0ff; border-color: #c7cbf5; color: #4f46e5; font-weight: 600; }
+@media (max-width: 720px) {
+  .ui-mask { padding: 10px; align-items: flex-end; }
+  .ui-box { width: 100%; max-height: calc(100dvh - 20px); border-radius: 16px; }
+  .ui-head { padding: 14px 16px 8px; }
+  .ui-body { padding: 0 16px; }
+  #ui-text { font-size: 12.5px; }
+  .ui-btns { padding: 12px 16px 16px; gap: 8px; }
+  .ui-btns button { flex: 1; padding: 12px 10px; font-size: 15px; }
+}
+
+/* ===== 接入代码面板（宽版弹窗）===== */
+.ui-box.wide { width: min(96vw, 760px); }
+.ui-box.wide .ui-body { padding: 0 16px 12px; }
+.code-head { flex-shrink: 0; margin-bottom: 10px; }
+.code-target { font-size: 13.5px; color: #5a5f7d; }
+.code-target b { color: #4f46e5; font-family: ui-monospace, Menlo, monospace; }
+.code-tip { font-size: 12px; color: #8a8fa8; margin-top: 4px; line-height: 1.7; }
+.code-tabs {
+  display: flex; gap: 6px; overflow-x: auto; overflow-y: hidden;
+  padding-bottom: 8px; margin-bottom: 8px; flex-shrink: 0;
+  border-bottom: 1px solid #eef0f8; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.code-tabs::-webkit-scrollbar { display: none; }
+.code-tab {
+  padding: 7px 13px; border: 1px solid #dcdff0; border-radius: 8px;
+  background: #fff; color: #5a5f7d; font-size: 12.5px; cursor: pointer;
+  white-space: nowrap; flex-shrink: 0;
+}
+.code-tab.on { background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff; border-color: transparent; font-weight: 600; }
+.code-body {
+  margin: 0; padding: 12px 14px; border-radius: 10px;
+  background: #1e2032; color: #d6daea;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.65;
+  white-space: pre; overflow: auto;
+  max-height: min(56vh, 480px);
+  -webkit-overflow-scrolling: touch;
+  tab-size: 4;
+}
+@media (max-width: 720px) {
+  .ui-box.wide { width: 100%; }
+  .ui-box.wide .ui-body { padding: 0 12px 8px; }
+  .code-body { font-size: 11px; padding: 10px; max-height: 52vh; line-height: 1.6; }
+  .code-tab { padding: 7px 11px; font-size: 12px; }
+  .code-tip { font-size: 11.5px; }
+}

@@ -324,36 +324,103 @@ document.querySelectorAll('.sitelink').forEach(function (btn) {
       });
   };
 });
-// ===== 接入代码：根据是网站还是 App 给出不同示例 =====
-var KAMI_BASE = {{ base|tojson }};
+// ===== 接入代码：按技术栈展示完整可复制代码 =====
 document.querySelectorAll('.sitepick').forEach(function (btn) {
   btn.onclick = function () {
-    var d = btn.dataset.domain;
-    var isApp = d.indexOf('.') < 0;
-    var text;
-    if (isApp) {
-      text = '【App 接入：' + d + '】\n\n'
-        + '1) 首次激活（用户输入卡密时调用）\n'
-        + 'POST ' + KAMI_BASE + '/api/app/verify\n'
-        + 'Header: X-Kami-Code: 卡密\n'
-        + '        X-Kami-App: ' + d + '\n\n'
-        + '2) 每次启动校验（不激活、不扣时长）\n'
-        + 'POST ' + KAMI_BASE + '/api/app/check\n'
-        + 'Header: X-Kami-Code: 卡密\n'
-        + '        X-Kami-App: ' + d + '\n\n'
-        + '返回 JSON：{"ok":true,"expire_at":"2026-12-01T10:00:00","expire_text":"2026-12-01 10:00","days_left":29}\n'
-        + 'ok=false 时 message 说明原因（无效/过期/未激活/仅限其他App）\n\n'
-        + '—— 说明 ——\n'
-        + '上文的 ' + d + ' 就是「App 标识」，不用自己编，后台点「自动生成」得到的那个照抄即可。\n'
-        + 'App 只要把这两句填进去：接口地址 + 标识，其余逻辑照抄上面的。';
-    } else {
-      text = '【网站接入：' + d + '】\n\n'
-        + '<script src="' + KAMI_BASE + '/embed.js?site=' + d + '"><\/script>\n\n'
-        + '把这一行放进该网站每个需要保护的页面（或模板 head 里）即可。';
-    }
-    uiPrompt(text, isApp ? 'App 接入代码' : '网站接入代码', isApp ? (KAMI_BASE + '/api/app/verify  |  X-Kami-App: ' + d) : text, function () {});
+    btn.disabled = true;
+    fetch('/admin/site/code/' + btn.dataset.id, { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false;
+        if (!d.ok) { uiAlert(d.message || '获取失败', '获取失败'); return; }
+        openCodePanel(d);
+      })
+      .catch(function () { btn.disabled = false; uiAlert('网络错误，请重试', '获取失败'); });
   };
 });
+
+function openCodePanel(d) {
+  var names = Object.keys(d.snippets);
+  var tabs = '<div class="code-tabs">' + names.map(function (n, i) {
+    return '<button class="code-tab' + (i === 0 ? ' on' : '') + '" data-name="' + esc(n) + '">' + esc(n) + '</button>';
+  }).join('') + '</div>';
+
+  var html = ''
+    + '<div class="code-head">'
+    + '<div class="code-target">接入对象：<b>' + esc(d.domain) + '</b>' + (d.is_app ? '（App）' : '（网站）') + '</div>'
+    + '<div class="code-tip">选你用的技术栈，点「复制」整段复制。代码里的接口地址和标识都已填好，<b>不用改</b>。</div>'
+    + '</div>'
+    + tabs
+    + '<pre class="code-body" id="cp-body"></pre>';
+
+  // 用现有的弹窗体，换成自定义宽版内容
+  uiReset();
+  var box = document.querySelector('#ui-modal .ui-box');
+  box.classList.add('wide');
+  var body = box.querySelector('.ui-body');
+  body.innerHTML = html;
+  document.getElementById('ui-title').textContent = '接入代码';
+  document.getElementById('ui-ok').textContent = '关闭';
+  document.getElementById('ui-ok').onclick = function () { closeCodePanel(); };
+  uiShow();
+
+  var cur = names[0];
+  var pre = document.getElementById('cp-body');
+  function show(name) {
+    cur = name;
+    pre.textContent = d.snippets[name];
+    body.querySelectorAll('.code-tab').forEach(function (t) {
+      t.classList.toggle('on', t.dataset.name === name);
+    });
+    pre.scrollTop = 0;
+  }
+  body.querySelectorAll('.code-tab').forEach(function (t) {
+    t.onclick = function () { show(t.dataset.name); };
+  });
+  show(cur);
+
+  // 复制按钮动态插入到按钮区最左
+  var btns = box.querySelector('.ui-btns');
+  var copyBtn = document.getElementById('ui-copy');
+  copyBtn.hidden = false;
+  copyBtn.textContent = '复制';
+  copyBtn.onclick = function () {
+    copyText(d.snippets[cur], function (tip) {
+      copyBtn.textContent = tip;
+      setTimeout(function () { copyBtn.textContent = '复制'; }, 1600);
+    });
+  };
+}
+
+function closeCodePanel() {
+  var box = document.querySelector('#ui-modal .ui-box');
+  box.classList.remove('wide');
+  document.querySelector('#ui-modal .ui-body').innerHTML =
+    '<input id="ui-input" hidden><pre id="ui-text"></pre>';
+  uiHide();
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+function copyText(txt, cb) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function () { cb('已复制 ✓'); }, function () { fb(); });
+  } else fb();
+  function fb() {
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); cb('已复制 ✓'); } catch (e) { cb('请手动复制'); }
+    ta.remove();
+  }
+}
+
 document.querySelectorAll('.delsite').forEach(function (btn) {
   btn.onclick = function () {
     uiConfirm('移除后该网站将不再显示在列表中（不影响其卡密），确定移除？', '移除网站', function (yes) {
@@ -451,35 +518,49 @@ document.getElementById('p-btn').onclick = function () {
     });
 };
 </script>
-<style>
-.ui-mask { position:fixed; inset:0; z-index:9999; display:none; align-items:center; justify-content:center; background:rgba(15,18,45,.45); }
-.ui-mask.show { display:flex; }
-</style>
+
 <div id="ui-modal" class="ui-mask" hidden>
-  <div style="width:min(92vw,420px);background:#fff;border-radius:14px;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:system-ui,sans-serif;">
-    <h3 id="ui-title" style="margin:0 0 10px;font-size:17px;color:#1f2340;">提示</h3>
-    <input id="ui-input" hidden style="width:100%;box-sizing:border-box;padding:10px 12px;border:1.5px solid #dcdff0;border-radius:8px;font-size:14px;">
-    <p id="ui-text" style="margin:0;font-size:14px;color:#4a4f68;line-height:1.7;word-break:break-all;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;"></p>
-    <div id="ui-btns" style="margin-top:18px;display:flex;gap:10px;justify-content:flex-end;">
-      <button id="ui-cancel" hidden style="padding:8px 18px;border:1px solid #dcdff0;border-radius:8px;background:#fff;cursor:pointer;">取消</button>
-      <button id="ui-ok" style="padding:8px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;cursor:pointer;">确定</button>
+  <div class="ui-box">
+    <div class="ui-head">
+      <h3 id="ui-title">提示</h3>
+      <button class="ui-x" id="ui-x" aria-label="关闭">×</button>
+    </div>
+    <div class="ui-body">
+      <input id="ui-input" hidden>
+      <pre id="ui-text"></pre>
+    </div>
+    <div class="ui-btns">
+      <button id="ui-copy" hidden>复制</button>
+      <button id="ui-cancel" hidden>取消</button>
+      <button id="ui-ok">确定</button>
     </div>
   </div>
 </div>
 <script>
+var _uiCopyText = '';
 function uiShow() { document.getElementById('ui-modal').classList.add('show'); }
 function uiHide() { document.getElementById('ui-modal').classList.remove('show'); }
+function uiReset() {
+  var t = document.getElementById('ui-text');
+  t.textContent = '';
+  t.classList.remove('wrap');
+  var inp = document.getElementById('ui-input');
+  inp.hidden = true;
+  document.getElementById('ui-copy').hidden = true;
+  document.getElementById('ui-cancel').hidden = true;
+  _uiCopyText = '';
+}
 function uiAlert(text, title, cb) {
+  uiReset();
   document.getElementById('ui-title').textContent = title || '提示';
   document.getElementById('ui-text').textContent = text || '';
-  var inp = document.getElementById('ui-input'); inp.hidden = true;
-  document.getElementById('ui-cancel').hidden = true;
   document.getElementById('ui-ok').textContent = '确定';
   document.getElementById('ui-ok').onclick = function () { uiHide(); if (cb) cb(); };
   uiShow();
 }
 function uiPrompt(text, title, value, cb) {
-  var m = document.getElementById('ui-modal'), inp = document.getElementById('ui-input');
+  uiReset();
+  var inp = document.getElementById('ui-input');
   document.getElementById('ui-title').textContent = title || '输入';
   document.getElementById('ui-text').textContent = text;
   inp.hidden = false; inp.value = value || '';
@@ -491,15 +572,53 @@ function uiPrompt(text, title, value, cb) {
   document.getElementById('ui-cancel').onclick = function () { uiHide(); };
 }
 function uiConfirm(text, title, cb) {
+  uiReset();
   document.getElementById('ui-title').textContent = title || '确认';
   document.getElementById('ui-text').textContent = text;
-  document.getElementById('ui-input').hidden = true;
   document.getElementById('ui-cancel').hidden = false;
   document.getElementById('ui-ok').textContent = '确定';
   uiShow();
   document.getElementById('ui-ok').onclick = function () { uiHide(); cb(true); };
   document.getElementById('ui-cancel').onclick = function () { uiHide(); cb(false); };
 }
+/* 大段代码弹窗：内容区可滚动、按钮固定底部、带复制按钮 */
+function uiCode(text, title) {
+  uiReset();
+  var t = document.getElementById('ui-text');
+  document.getElementById('ui-title').textContent = title || '接入代码';
+  t.textContent = text;
+  _uiCopyText = text;
+  document.getElementById('ui-copy').hidden = false;
+  document.getElementById('ui-ok').textContent = '关闭';
+  document.getElementById('ui-ok').onclick = function () { uiHide(); };
+  uiShow();
+}
+document.getElementById('ui-x').onclick = function () { uiHide(); };
+document.getElementById('ui-copy').onclick = function () {
+  var btn = this, txt = _uiCopyText || '';
+  function done(okText) {
+    btn.textContent = okText;
+    setTimeout(function () { btn.textContent = '复制'; }, 1600);
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(function () { done('已复制 ✓'); }, function () { fallback(); });
+  } else fallback();
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done('已复制 ✓'); } catch (e) { done('请长按手动复制'); }
+    ta.remove();
+  }
+};
+document.getElementById('ui-modal').addEventListener('click', function (e) {
+  if (e.target === this) uiHide();
+});
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape') uiHide();
+});
 </script>
 
 </body>

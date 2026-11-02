@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import database as db
+import snippets
 
 BASE_DIR = Path(__file__).parent
 app = FastAPI(title="卡密系统")
@@ -393,6 +394,29 @@ async def admin_site_add(
         "is_app": "." not in row["domain"],
         "api": f"{base}/api/app/verify",
         "link": link,
+    }
+
+
+@app.post("/admin/site/code/{site_id}")
+async def admin_site_code(site_id: int, request: Request, kami_session: str | None = Cookie(None)):
+    """返回该网站/App 的全部接入代码（按技术栈分组）"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    conn = db.get_conn()
+    row = conn.execute("SELECT domain, note FROM sites WHERE id=?", (site_id,)).fetchone()
+    conn.close()
+    if not row:
+        return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
+    base = str(request.base_url).rstrip("/")
+    domain = row["domain"]
+    is_app = "." not in domain
+    return {
+        "ok": True,
+        "domain": domain,
+        "is_app": is_app,
+        "base": base,
+        "embed": f'<script src="{base}/embed.js?site={domain}"></script>',
+        "snippets": snippets.build_snippets(base, domain),
     }
 
 
