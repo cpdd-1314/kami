@@ -78,6 +78,24 @@ object Kami {
         check(code) { r ->
             if (r.ok) onPass(r.expireText) else onNeedInput()
         }
+        startGuard(ctx, onNeedInput)
+    }
+
+    /** 每 5 分钟复核一次；失效立即回调 onLock（锁回卡密输入页） */
+    fun startGuard(ctx: Context, onLock: () -> Unit) {
+        val timer = java.util.Timer("kami-guard", true)
+        timer.schedule(object : java.util.TimerTask() {
+            override fun run() {
+                val code = savedCode(ctx)
+                if (code.isBlank()) return
+                check(code) { r ->
+                    if (!r.ok) {
+                        clearCode(ctx)
+                        onLock()   // 卡密失效 → 锁定，要求重新输入
+                    }
+                }
+            }
+        }, 5 * 60 * 1000L, 5 * 60 * 1000L)
     }
 
     private fun post(url: String, code: String, cb: (Result) -> Unit, onSuccess: () -> Unit) {
@@ -179,6 +197,24 @@ public class Kami {
         String code = saved(c);
         if (code == null || code.trim().isEmpty()) { needInput.run(); return; }
         check(code, (ok, k, m, e) -> { if (ok) pass.onResult(true, k, m, e); else needInput.run(); });
+        startGuard(c, needInput);
+    }
+
+    private static final java.util.concurrent.ScheduledExecutorService GUARD =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
+
+    /** 每 5 分钟复核一次；失效立即回调 needInput（锁回卡密输入页） */
+    public static void startGuard(Context c, Runnable needInput) {
+        GUARD.scheduleAtFixedRate(() -> {
+            String code = saved(c);
+            if (code == null || code.trim().isEmpty()) return;
+            check(code, (ok, k, m, e) -> {
+                if (!ok) {
+                    c.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(KEY).apply();
+                    needInput.run();
+                }
+            });
+        }, 5, 5, java.util.concurrent.TimeUnit.MINUTES);
     }
 
     private static void post(String url, String code, Callback2 cb) {
@@ -212,6 +248,7 @@ public class Kami {
     flutter = """// ========== Flutter（Android / iOS 通用）==========
 // pubspec.yaml 加：http: ^1.2.0   shared_preferences: ^2.2.0
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -274,8 +311,26 @@ class Kami {
     final code = await savedCode();
     if (code == null) return 'need_input';
     final r = await check(code);
-    return r['ok'] == true ? null : 'need_input';
+    if (r['ok'] != true) return 'need_input';
+    startGuard();   // 开始 5 分钟自动复核
+    return null;
   }
+
+  /// 每 5 分钟复核一次；失效立即回调 onLockCallback（锁回卡密输入页）
+  static void startGuard() {
+    Timer.periodic(const Duration(minutes: 5), (_) async {
+      final code = await savedCode();
+      if (code == null) return;
+      final r = await check(code);
+      if (r['ok'] != true) {
+        await clearCode();
+        onLockCallback?.call(r['message'] as String? ?? '卡密已失效');
+      }
+    });
+  }
+
+  /// 在启动页设置：Kami.onLockCallback = (msg) => 跳回卡密输入页;
+  static void Function(String message)? onLockCallback;
 }
 
 // 用法（在启动页 initState 里）：
@@ -349,7 +404,24 @@ export async function gate() {
   const code = await savedCode();
   if (!code) return 'need_input';
   const r = await check(code);
-  return r.ok ? null : 'need_input';
+  if (!r.ok) return 'need_input';
+  startGuard();   // 开始 5 分钟自动复核
+  return null;
+}
+
+/** 每 5 分钟复核一次；失效立即触发 onLock 回调（锁回卡密输入页） */
+let lockHandler = null;
+export function onLock(cb) { lockHandler = cb; }
+export function startGuard() {
+  setInterval(async () => {
+    const code = await savedCode();
+    if (!code) return;
+    const r = await check(code);
+    if (!r.ok) {
+      await clearCode();
+      if (lockHandler) lockHandler(r.message || '卡密已失效');
+    }
+  }, 5 * 60 * 1000);
 }
 
 // 用法：
@@ -429,7 +501,27 @@ final class Kami {
     /// 启动闸门
     static func gate(onPass: @escaping (String) -> Void, onNeedInput: @escaping () -> Void) {
         guard let code = savedCode else { onNeedInput(); return }
-        check(code) { r in r.ok ? onPass(r.expireText) : onNeedInput() }
+        check(code) { r in
+            if r.ok {
+                startGuard(onNeedInput: onNeedInput)
+                onPass(r.expireText)
+            } else {
+                onNeedInput()
+            }
+        }
+    }
+
+    /// 每 5 分钟复核一次；失效立即 onNeedInput（锁回卡密输入页）
+    static func startGuard(onNeedInput: @escaping () -> Void) {
+        Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { _ in
+            guard let code = savedCode else { return }
+            check(code) { r in
+                if !r.ok {
+                    clear()
+                    onNeedInput()
+                }
+            }
+        }
     }
 }
 
@@ -475,6 +567,26 @@ async function kamiCheck(code) {
 //   const r = await kamiCheck(saved);
 //   if (r.ok) showContent(r.expire_text); else showInput(r.message);
 // }
+
+// 每 5 分钟自动复核：失效立即锁回卡密输入页（放在启动逻辑之后）
+// setInterval(async () => {
+//   const code = localStorage.getItem('kami_code');
+//   if (!code) return;
+//   const r = await kamiCheck(code);
+//   if (!r.ok) {
+//     localStorage.removeItem('kami_code');
+//     showInput(r.message);   // 显示「卡密已过期/无效」，要求重新输入
+//   }
+// }, 5 * 60 * 1000);
+//
+// 切回页面时也立即复核（防止挂机绕过）：
+// document.addEventListener('visibilitychange', async () => {
+//   if (document.visibilityState !== 'visible') return;
+//   const code = localStorage.getItem('kami_code');
+//   if (!code) return;
+//   const r = await kamiCheck(code);
+//   if (!r.ok) { localStorage.removeItem('kami_code'); showInput(r.message); }
+// });
 
 """
 
@@ -542,6 +654,25 @@ public static class Kami
 
     /// 每次启动校验
     public static Task<Result> CheckAsync(string code) => PostAsync("/api/app/check", code);
+
+    /// 每 5 分钟复核一次；失效立即 onLock（锁回卡密输入页）。主窗口 Loaded 时调用。
+    public static async Task StartGuardAsync(Action<Result> onLock)
+    {
+        while (true)
+        {
+            await Task.Delay(TimeSpan.FromMinutes(5));
+            var code = SavedCode;
+            if (string.IsNullOrWhiteSpace(code)) continue;
+            var r = await CheckAsync(code);
+            if (!r.ok)
+            {
+                // 清除本地保存并锁定
+                Properties.Settings.Default.KamiCode = "";
+                Properties.Settings.Default.Save();
+                onLock(r);
+            }
+        }
+    }
 }
 
 // 用法：
@@ -603,11 +734,43 @@ def _load():
 
 
 def gate():
-    \"\"\"返回 True 表示通过\"\"\"
+    \"\"\"返回 True 表示通过，同时启动 5 分钟自动复核\"\"\"
     code = _load()
     if not code:
         return False
-    return bool(check(code).get("ok"))
+    if check(code).get("ok"):
+        start_guard(on_lock=lambda msg: _lock(msg))
+        return True
+    return False
+
+
+def _lock(msg):
+    \"\"\"卡密失效：清除本地保存并退出主程序（或换成你的锁定界面）\"\"\"
+    try:
+        import os
+        os.remove(".kami")
+    except OSError:
+        pass
+    print("已锁定：", msg)
+    raise SystemExit(1)
+
+
+def start_guard(on_lock, interval=300):
+    \"\"\"每 5 分钟复核一次；失效立即回调 on_lock(message)\"\"\"
+    import threading, time
+
+    def loop():
+        while True:
+            time.sleep(interval)
+            code = _load()
+            if not code:
+                continue
+            r = check(code)
+            if not r.get("ok"):
+                on_lock(r.get("message", "卡密已失效"))
+                return
+
+    threading.Thread(target=loop, daemon=True).start()
 
 
 if __name__ == "__main__":
