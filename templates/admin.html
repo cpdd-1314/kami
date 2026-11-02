@@ -214,6 +214,7 @@
           <td class="ops">
             <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
             <button class="sitelink" data-id="{{ s.id }}">指定链接</button>
+            <button class="sitepanel" data-id="{{ s.id }}">作者面板</button>
             <button class="sitepick" data-id="{{ s.id }}" data-domain="{{ s.domain }}">接入代码</button>
             <button class="delsite" data-id="{{ s.id }}">移除</button>
           </td>
@@ -319,18 +320,45 @@ document.querySelectorAll('.del').forEach(function (btn) {
     });  };
 });
 document.querySelectorAll('.sitelink').forEach(function (btn) {
-  btn.onclick = function () {
-    btn.disabled = true;
-    fetch('/admin/site/link/' + btn.dataset.id, { method: 'POST' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        btn.disabled = false;
-        if (d.ok) {
-          uiPrompt('「' + d.domain + '」的指定链接已生成，复制发给该网站使用（再次生成会更换旧链接）：', '指定链接', d.url, function () {});
-        } else uiAlert(d.message, '生成失败');
-      });
-  };
+  btn.onclick = function () { genLink(btn, 'url'); };
 });
+document.querySelectorAll('.sitepanel').forEach(function (btn) {
+  btn.onclick = function () { genLink(btn, 'panel'); };
+});
+function genLink(btn, which) {
+  btn.disabled = true;
+  fetch('/admin/site/link/' + btn.dataset.id, { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      btn.disabled = false;
+      if (d.ok) {
+        var isPanel = which === 'panel';
+        uiPrompt(
+          isPanel
+            ? '「' + d.domain + '」的作者面板链接已生成，发给该网站作者，作者可在面板里查看卡密、自行生成卡密（再次生成会更换旧链接，两个链接同步失效）：'
+            : '「' + d.domain + '」的指定链接已生成，复制发给该网站使用（再次生成会更换旧链接）：',
+          isPanel ? '作者面板' : '指定链接',
+          isPanel ? d.panel : d.url,
+          function () {});
+      } else uiAlert(d.message, '生成失败');
+    });
+}
+// ===== 实时刷新：数据版本变化时自动重载页面（输入中/弹窗打开时不打扰）=====
+var lastV = null;
+function pollVersion() {
+  fetch('/admin/version').then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok) return;
+    if (lastV !== null && d.v !== lastV) {
+      var tag = document.activeElement && document.activeElement.tagName;
+      var typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      var dialogOpen = !!document.querySelector('.ui-mask');
+      if (!typing && !dialogOpen) { location.reload(); return; }
+    }
+    lastV = d.v;
+  }).catch(function () {});
+}
+setInterval(pollVersion, 4000);
+pollVersion();
 // ===== 接入代码：按技术栈展示完整可复制代码 =====
 document.querySelectorAll('.sitepick').forEach(function (btn) {
   btn.onclick = function () {

@@ -69,6 +69,40 @@ def init_db():
     conn.close()
 
 
+def data_version() -> str:
+    """数据版本号：卡密数/最大id/已用数 + 站点数/最大id，任一变化即代表数据有更新"""
+    conn = get_conn()
+    a = conn.execute(
+        "SELECT COUNT(*), IFNULL(MAX(id),0), IFNULL(SUM(status='used'),0) FROM cards"
+    ).fetchone()
+    b = conn.execute("SELECT COUNT(*), IFNULL(MAX(id),0) FROM sites").fetchone()
+    conn.close()
+    return f"{a[0]}:{a[1]}:{a[2]}:{b[0]}:{b[1]}"
+
+
+def site_stats(domain: str) -> dict:
+    """某个站点（含通用卡密）的数据概览"""
+    conn = get_conn()
+    now = datetime.now().isoformat(timespec="seconds")
+    row = conn.execute(
+        """SELECT COUNT(*) total,
+                  IFNULL(SUM(status='unused'),0) unused,
+                  IFNULL(SUM(status='used' AND (expire_at IS NULL OR expire_at > ?)),0) used,
+                  IFNULL(SUM(status='used' AND expire_at IS NOT NULL AND expire_at <= ?),0) expired
+           FROM cards WHERE site_domain IS NULL OR site_domain=?""",
+        (now, now, domain),
+    ).fetchone()
+    conn.close()
+    return {"total": row[0], "unused": row[1], "used": row[2], "expired": row[3]}
+
+
+def site_by_token(token: str) -> str | None:
+    conn = get_conn()
+    row = conn.execute("SELECT domain FROM sites WHERE token=?", (token,)).fetchone()
+    conn.close()
+    return row["domain"] if row else None
+
+
 def hash_password(pwd: str) -> str:
     salt = secrets.token_hex(16)
     return salt + "$" + hashlib.sha256((salt + pwd).encode()).hexdigest()
@@ -205,13 +239,16 @@ def verify_card(code: str, user: str = "", domain: str | None = None, device: st
     except Exception:
         pass
 
-def list_cards(status: str | None = None, q: str | None = None):
+def list_cards(status: str | None = None, q: str | None = None, domain: str | None = None):
     conn = get_conn()
     sql = "SELECT * FROM cards WHERE 1=1"
     params: list = []
     if status in ("unused", "used"):
         sql += " AND status=?"
         params.append(status)
+    if domain:
+        sql += " AND site_domain=?"
+        params.append(domain)
     if q:
         sql += " AND (code LIKE ? OR IFNULL(note,'') LIKE ? OR IFNULL(used_by,'') LIKE ?)"
         params += [f"%{q}%"] * 3

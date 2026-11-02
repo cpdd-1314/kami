@@ -14,6 +14,16 @@ import snippets
 import backup
 
 
+def fix_enc(s: str) -> str:
+    """修复表单中文被按 latin-1 解码的双重编码问题"""
+    if not s:
+        return s
+    try:
+        return s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return s
+
+
 def base_url(request: Request) -> str:
     """对外可访问的基础地址。
 
@@ -80,6 +90,64 @@ async def index(request: Request):
         "index.html",
         {"request": request, "site": "", "mode": db.DEFAULT_MODE, "site_lang": lang},
     )
+
+
+@app.get("/admin/version")
+async def admin_version(kami_session: str | None = Cookie(None)):
+    """后台轮询数据版本号，变了前端自动刷新 → 卡密激活/接入秒显示"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False}, status_code=401)
+    return {"ok": True, "v": db.data_version()}
+
+
+@app.get("/panel/{token}", response_class=HTMLResponse)
+async def panel_page(token: str, request: Request):
+    """网站作者控制面板：作者凭专属链接进入，管理自己网站的卡密"""
+    domain = db.site_by_token(token)
+    if not domain:
+        return PlainTextResponse("面板链接无效或已失效", status_code=404)
+    return templates.TemplateResponse("panel.html", {"request": request, "token": token, "domain": domain})
+
+
+def _panel_domain(token: str) -> str | None:
+    return db.site_by_token((token or "").strip())
+
+
+@app.post("/panel/api/data")
+async def panel_data(request: Request, token: str = Form("")):
+    domain = _panel_domain(token)
+    if not domain:
+        return JSONResponse({"ok": False, "message": "面板链接无效"}, status_code=404)
+    st = db.site_settings(domain)
+    cards = db.list_cards(domain=domain)
+    return {
+        "ok": True,
+        "domain": domain,
+        "stats": db.site_stats(domain),
+        "unlock_mode": st["unlock_mode"],
+        "lang": st["lang"],
+        "cards": [
+            {
+                "code": c["code"], "status": c["status"],
+                "days": c["duration_days"],
+                "expire": c["expire_at"], "expired": c["is_expired"],
+                "by": c["used_by"], "note": c["note"],
+            }
+            for c in cards[:500]
+        ],
+    }
+
+
+@app.post("/panel/api/generate")
+async def panel_generate(request: Request, token: str = Form(""), count: int = Form(1),
+                         days: int = Form(30), note: str = Form("")):
+    domain = _panel_domain(token)
+    if not domain:
+        return JSONResponse({"ok": False, "message": "面板链接无效"}, status_code=404)
+    count = min(max(count, 1), 100)
+    days = min(max(days, 0), 3650)
+    codes = db.create_cards(count, days, note=fix_enc(note)[:50], site_domain=domain)
+    return {"ok": True, "codes": codes}
 
 
 @app.get("/s/{token}", response_class=HTMLResponse)
@@ -332,7 +400,7 @@ async def generate(
             {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先在「添加网站」中登记"},
             status_code=400,
         )
-    codes = db.create_cards(count, duration_days, note, site_domain or None, multi_device=bool(multi_device))
+    codes = db.create_cards(count, duration_days, fix_enc(note), site_domain or None, multi_device=bool(multi_device))
     return {"ok": True, "codes": codes}
 
 
@@ -383,7 +451,9 @@ async def admin_site_link(site_id: int, request: Request, kami_session: str | No
         return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
     domain, tok = r
     base = base_url(request)
-    return {"ok": True, "domain": domain, "url": f"{base}/s/{tok}"}
+    return {"ok": True, "domain": domain,
+            "url": f"{base}/s/{tok}",
+            "panel": f"{base}/panel/{tok}"}
 
 
 @app.post("/admin/site/delete/{site_id}")
@@ -406,7 +476,7 @@ async def admin_site_add(
     """手动新增一个接入网站（也可以等它自己上报，这里用于提前登记）"""
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
-    ok, msg, row = db.add_site(domain, note, unlock_mode or None, lang)
+    ok, msg, row = db.add_site(fix_enc(domain), fix_enc(note), unlock_mode or None, lang)
     if not ok:
         return JSONResponse({"ok": False, "message": msg}, status_code=400)
     base = base_url(request)

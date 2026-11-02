@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ domain }} · 卡密控制面板</title>
+<style>
+:root{--bg:#f4f5fb;--card:#fff;--line:#e6e8f2;--tx:#1c2333;--sub:#7a8199;--blue:#2563eb;--green:#16a34a;--red:#ef4444}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.6 system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;padding:20px 14px 60px}
+.wrap{max-width:960px;margin:0 auto}
+h1{font-size:20px;margin-bottom:2px}
+.sub{color:var(--sub);font-size:13px;margin-bottom:18px;word-break:break-all}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center}
+.stat b{display:block;font-size:24px}
+.stat span{font-size:12px;color:var(--sub)}
+.gen{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:18px}
+.gen h2{font-size:15px;margin-bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+.row label{font-size:13px;color:var(--sub);display:flex;flex-direction:column;gap:4px}
+.row input,.row select{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:14px;width:130px;background:#fff}
+#genBtn{background:var(--blue);color:#fff;border:0;border-radius:9px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer}
+#genBtn:disabled{opacity:.5}
+.res{margin-top:10px;background:#f0f6ff;border:1px solid #cfe1ff;border-radius:10px;padding:10px 12px;font-size:13px;white-space:pre-wrap;word-break:break-all;display:none}
+.res .cp{float:right;cursor:pointer;color:var(--blue);font-weight:600}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;font-size:13px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;word-break:break-all}
+th{background:#f8f9fe;font-size:12px;color:var(--sub);white-space:nowrap}
+.tag{display:inline-block;padding:1px 9px;border-radius:99px;font-size:12px}
+.t-ok{background:#e8f7ee;color:var(--green)}.t-no{background:#eef0f6;color:var(--sub)}.t-ex{background:#fdeaea;color:var(--red)}
+.empty{text-align:center;color:var(--sub);padding:26px 0}
+@media(max-width:640px){.stats{grid-template-columns:repeat(2,1fr)}.row input,.row select{width:100%}.row label{flex:1 1 45%}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎫 卡密控制面板</h1>
+  <p class="sub">网站：<b>{{ domain }}</b>　·　本面板仅管理该网站绑定的卡密，请勿泄露链接</p>
+
+  <div class="stats">
+    <div class="stat"><b id="st-total">–</b><span>卡密总数</span></div>
+    <div class="stat"><b style="color:var(--green)" id="st-unused">–</b><span>未使用</span></div>
+    <div class="stat"><b style="color:var(--blue)" id="st-used">–</b><span>使用中</span></div>
+    <div class="stat"><b style="color:var(--red)" id="st-expired">–</b><span>已过期</span></div>
+  </div>
+
+  <div class="gen">
+    <h2>生成卡密（自动绑定「{{ domain }}」）</h2>
+    <div class="row">
+      <label>数量 <input id="g-count" type="number" value="10" min="1" max="100"></label>
+      <label>有效天数 <input id="g-days" type="number" value="30" min="0"></label>
+      <label>备注 <input id="g-note" placeholder="选填" style="width:170px"></label>
+      <button id="genBtn">生成</button>
+    </div>
+    <div class="res" id="res"></div>
+    <p style="font-size:12px;color:var(--sub);margin-top:8px">天数填 0 = 永久；单次最多 100 个。卡密默认绑定一台设备。</p>
+  </div>
+
+  <h2 style="font-size:15px;margin-bottom:8px">卡密列表（每 5 秒自动刷新）</h2>
+  <table>
+    <thead><tr><th>卡密</th><th>状态</th><th>天数</th><th>到期</th><th>使用者</th><th>备注</th></tr></thead>
+    <tbody id="tbody"><tr><td colspan="6" class="empty">加载中…</td></tr></tbody>
+  </table>
+</div>
+<script>
+var TOKEN = {{ token | tojson }};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]});}
+function fmt(iso){if(!iso)return '—';try{var d=new Date(iso);return d.toLocaleString('zh-CN',{hour12:false});}catch(e){return iso;}}
+function post(url, body, cb){
+  fetch(url,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+    .then(function(r){return r.json();}).then(cb)
+    .catch(function(){cb({ok:false,message:'网络错误'});});
+}
+function load(){
+  post('/panel/api/data','token='+encodeURIComponent(TOKEN),function(d){
+    if(!d.ok)return;
+    document.getElementById('st-total').textContent=d.stats.total;
+    document.getElementById('st-unused').textContent=d.stats.unused;
+    document.getElementById('st-used').textContent=d.stats.used;
+    document.getElementById('st-expired').textContent=d.stats.expired;
+    var tb=document.getElementById('tbody');
+    if(!d.cards.length){tb.innerHTML='<tr><td colspan="6" class="empty">还没有卡密，用上面的表单生成</td></tr>';return;}
+    var h='';
+    d.cards.forEach(function(c){
+      var st=c.status==='unused'?'<span class="tag t-no">未使用</span>':(c.expired?'<span class="tag t-ex">已过期</span>':'<span class="tag t-ok">使用中</span>');
+      h+='<tr><td class="code">'+esc(c.code)+'</td><td>'+st+'</td><td>'+(c.days||'永久')+'</td><td>'+fmt(c.expire)+'</td><td>'+esc(c.by||'—')+'</td><td>'+esc(c.note||'')+'</td></tr>';
+    });
+    tb.innerHTML=h;
+  });
+}
+document.getElementById('genBtn').onclick=function(){
+  var b=this;b.disabled=true;
+  post('/panel/api/generate','token='+encodeURIComponent(TOKEN)
+    +'&count='+document.getElementById('g-count').value
+    +'&days='+document.getElementById('g-days').value
+    +'&note='+encodeURIComponent(document.getElementById('g-note').value),function(d){
+    b.disabled=false;
+    var r=document.getElementById('res');
+    if(d.ok){
+      r.style.display='block';
+      r.innerHTML='<span class="cp" id="cp">复制全部</span>已生成 '+d.codes.length+' 个卡密：\n'+d.codes.join('\n');
+      document.getElementById('cp').onclick=function(){
+        var t=d.codes.join('\n');
+        if(navigator.clipboard)navigator.clipboard.writeText(t);
+        else{var a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();document.execCommand('copy');a.remove();}
+        this.textContent='已复制 ✓';
+      };
+      load();
+    }else{r.style.display='block';r.textContent=d.message||'生成失败';}
+  });
+};
+load();
+setInterval(load,5000);
+</script>
+</body>
+</html>
