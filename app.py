@@ -223,6 +223,14 @@ async def logout(kami_session: str | None = Cookie(None)):
     return resp
 
 
+@app.post("/admin/site/delete/{site_id}")
+async def delete_site(site_id: int, kami_session: str | None = Cookie(None)):
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    db.delete_site(site_id)
+    return {"ok": True}
+
+
 @app.get("/admin/export")
 async def export(kami_session: str | None = Cookie(None)):
     if not require_auth(kami_session):

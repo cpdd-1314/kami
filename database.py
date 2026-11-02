@@ -215,4 +215,39 @@ def list_sites():
     conn = get_conn()
     rows = [dict(r) for r in conn.execute("SELECT * FROM sites ORDER BY id DESC").fetchall()]
     conn.close()
+    # 每个网站的卡密统计（含全网通用卡密在其上的激活数）
+    now = datetime.now()
+    for s in rows:
+        conn = get_conn()
+        s["bound_total"] = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE site_domain=?", (s["domain"],)
+        ).fetchone()[0]
+        s["bound_unused"] = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE site_domain=? AND status='unused'", (s["domain"],)
+        ).fetchone()[0]
+        s["activated"] = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE status='used' AND (site_domain=? OR site_domain IS NULL) AND used_by IS NOT NULL",
+            (s["domain"],),
+        ).fetchone()[0]
+        last = conn.execute(
+            "SELECT MAX(used_at) FROM cards WHERE status='used' AND (site_domain=? OR site_domain IS NULL)",
+            (s["domain"],),
+        ).fetchone()[0]
+        s["last_active"] = last
+        s["is_expired_active"] = bool(
+            last and any(
+                r["expire_at"] and datetime.fromisoformat(r["expire_at"]) <= now
+                for r in conn.execute(
+                    "SELECT expire_at FROM cards WHERE status='used' AND site_domain=?", (s["domain"],)
+                ).fetchall()
+            )
+        ) if s["domain"] else False
+        conn.close()
     return rows
+
+
+def delete_site(site_id: int):
+    conn = get_conn()
+    conn.execute("DELETE FROM sites WHERE id=?", (site_id,))
+    conn.commit()
+    conn.close()

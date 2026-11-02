@@ -78,11 +78,26 @@
   </div>
 
   <div class="panel">
-    <h3>接入的网站</h3>
+    <h3>接入的网站（{{ sites|length }}）</h3>
     {% if sites %}
     <table>
-      <thead><tr><th>域名</th><th>登记时间</th></tr></thead>
-      <tbody>{% for s in sites %}<tr><td class="code">{{ s.domain }}</td><td>{{ s.created_at }}</td></tr>{% endfor %}</tbody>
+      <thead><tr><th>域名</th><th>绑定卡密</th><th>未使用</th><th>激活次数</th><th>最近激活</th><th>登记时间</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for s in sites %}
+        <tr>
+          <td class="code">{{ s.domain }}</td>
+          <td>{{ s.bound_total }}</td>
+          <td>{{ s.bound_unused }}</td>
+          <td>{{ s.activated }}</td>
+          <td>{{ s.last_active or '—' }}</td>
+          <td>{{ s.created_at }}</td>
+          <td>
+            <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
+            <button class="delsite" data-id="{{ s.id }}">移除</button>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
     </table>
     {% else %}<p class="empty">暂无网站接入。在其他网站页面加入：<code>&lt;script src="本系统地址/embed.js"&gt;&lt;/script&gt;</code></p>{% endif %}
   </div>
@@ -110,6 +125,12 @@ document.querySelectorAll('.del').forEach(function (btn) {
   btn.onclick = function () {
     if (!confirm('确定删除该卡密？')) return;
     fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+  };
+});
+document.querySelectorAll('.delsite').forEach(function (btn) {
+  btn.onclick = function () {
+    if (!confirm('移除后该网站将不再显示在列表中（不影响其卡密），确定移除？')) return;
+    fetch('/admin/site/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
   };
 });
 document.getElementById('pwd-toggle').onclick = function () {
