@@ -364,3 +364,49 @@ def delete_site(site_id: int):
     conn.execute("DELETE FROM sites WHERE id=?", (site_id,))
     conn.commit()
     conn.close()
+
+
+def normalize_domain(raw: str) -> str:
+    """把用户填的各种写法统一成 host：https://a.com/x -> a.com"""
+    d = (raw or "").strip().lower()
+    if not d:
+        return ""
+    if "//" in d:
+        d = d.split("//", 1)[1]
+    d = d.split("/", 1)[0]
+    if "@" in d:
+        d = d.split("@", 1)[-1]
+    if ":" in d:
+        d = d.split(":", 1)[0]
+    if d.startswith("www.") and d.count(".") >= 2:
+        d = d[4:]
+    return d
+
+
+def add_site(raw_domain: str, note: str = "", unlock_mode: str | None = None, lang: str = "") -> tuple[bool, str, dict | None]:
+    """手动新增接入网站。返回 (是否成功, 提示, 网站信息 dict)"""
+    domain = normalize_domain(raw_domain)
+    if not domain:
+        return False, "请填写网站域名", None
+    if "." not in domain or len(domain) < 3:
+        return False, "域名格式不正确，例如 example.com", None
+    conn = get_conn()
+    _ensure_site_columns(conn)
+    if conn.execute("SELECT 1 FROM sites WHERE domain=?", (domain,)).fetchone():
+        conn.close()
+        return False, "该网站已存在", None
+    mode = unlock_mode if unlock_mode in UNLOCK_MODES else DEFAULT_MODE
+    conn.execute(
+        "INSERT INTO sites (domain, note, created_at, unlock_mode, lang) VALUES (?,?,?,?,?)",
+        (
+            domain,
+            (note or "").strip() or None,
+            datetime.now().isoformat(timespec="seconds"),
+            mode,
+            (lang or "").strip() or None,
+        ),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM sites WHERE domain=?", (domain,)).fetchone()
+    conn.close()
+    return True, "添加成功", dict(row) if row else None

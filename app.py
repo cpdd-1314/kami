@@ -270,6 +270,33 @@ async def delete_site(site_id: int, kami_session: str | None = Cookie(None)):
     return {"ok": True}
 
 
+@app.post("/admin/site/add")
+async def admin_site_add(
+    request: Request,
+    kami_session: str | None = Cookie(None),
+    domain: str = Form(""),
+    note: str = Form(""),
+    unlock_mode: str = Form(""),
+    lang: str = Form(""),
+):
+    """手动新增一个接入网站（也可以等它自己上报，这里用于提前登记）"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    ok, msg, row = db.add_site(domain, note, unlock_mode or None, lang)
+    if not ok:
+        return JSONResponse({"ok": False, "message": msg}, status_code=400)
+    base = str(request.base_url).rstrip("/")
+    r = db.site_token(row["id"])
+    link = f"{base}/s/{r[1]}" if r else ""
+    return {
+        "ok": True,
+        "id": row["id"],
+        "domain": row["domain"],
+        "embed": f'<script src="{base}/embed.js?site={row["domain"]}"></script>',
+        "link": link,
+    }
+
+
 @app.post("/admin/site/mode/{site_id}")
 async def admin_site_mode(site_id: int, mode: str = Form(""), kami_session: str | None = Cookie(None)):
     """设置该网站的解锁方式：blur 模糊 / dim 变暗 / lock 锁屏"""
