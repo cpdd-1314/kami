@@ -28,6 +28,7 @@
   <a href="#" id="menu-pwd"><i>🔒</i>修改密码</a>
   <a href="/admin/export"><i>⬇️</i>导出 CSV</a>
   <a href="/" target="_blank"><i>👁️</i>查看前台</a>
+  <a href="#all" data-jump="all"><i>🗂️</i>全部显示</a>
   <a href="/admin/logout" class="danger"><i>🚪</i>退出登录</a>
 </aside>
 
@@ -266,6 +267,18 @@
   // ===== 页面切换：一次只显示一个页面 =====
   var PAGES = ['sec-stats', 'sec-generate', 'sec-cards', 'sec-sites'];
   window.showPage = function (id) {
+    if (id === 'all') {  // 全部一起显示
+      PAGES.forEach(function (p) {
+        var el = document.getElementById(p);
+        if (el) el.style.display = '';
+      });
+      document.querySelectorAll('.drawer a[data-jump]').forEach(function (a) {
+        a.classList.toggle('active', a.dataset.jump === 'all');
+      });
+      try { sessionStorage.setItem('kami_page', 'all'); } catch (e) {}
+      window.scrollTo({ top: 0 });
+      return;
+    }
     PAGES.forEach(function (p) {
       var el = document.getElementById(p);
       if (el) el.style.display = (p === id) ? '' : 'none';
@@ -280,7 +293,7 @@
   var savedPage = null;
   try { savedPage = sessionStorage.getItem('kami_page'); } catch (e) {}
   if (/[?&]q=/.test(location.search)) showPage('sec-cards');
-  else showPage(savedPage && PAGES.indexOf(savedPage) >= 0 ? savedPage : 'sec-stats');
+  else showPage(savedPage && (savedPage === 'all' || PAGES.indexOf(savedPage) >= 0) ? savedPage : 'sec-stats');
   // 桌面端左侧栏常驻：直接移除 hidden，不依赖 CSS
   if (window.innerWidth > 720) document.getElementById('drawer').hidden = false;
   var menuAdd = document.getElementById('menu-add-site');
