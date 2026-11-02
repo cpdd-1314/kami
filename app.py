@@ -52,36 +52,60 @@ def card_view(r: dict) -> dict:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "site": ""})
+
+
+@app.get("/s/{token}", response_class=HTMLResponse)
+async def site_page(token: str, request: Request):
+    """网站指定链接：验证页绑定到该网站，只能用该网站（或通用）的卡密"""
+    domain = db.site_by_token(token)
+    if not domain:
+        return PlainTextResponse("链接无效或已失效", status_code=404)
+    return templates.TemplateResponse("index.html", {"request": request, "site": domain})
 
 
 @app.post("/api/verify")
-async def verify(request: Request, code: str = Form("")):
+async def verify(request: Request, code: str = Form(""), site: str = Form("")):
     ip = client_ip(request)
     if not check_rate(ip):
         return JSONResponse({"ok": False, "message": "尝试过于频繁，请稍后再试"}, status_code=429)
     origin = request.headers.get("origin") or request.headers.get("referer") or ""
-    domain = None
-    if origin:
+    domain = site.strip() or None
+    if not domain and origin:
         from urllib.parse import urlparse
         domain = urlparse(origin).netloc or None
     ok, message, expire_at = db.verify_card(code, user=ip, domain=domain)
     return {"ok": ok, "message": message, "expire_at": expire_at}
 
 
+@app.post("/api/check")
+async def check(request: Request, code: str = Form(""), site: str = Form("")):
+    """回访校验：不激活卡密，仅检查有效性（过期则要求重新输入）"""
+    origin = request.headers.get("origin") or request.headers.get("referer") or ""
+    domain = site.strip() or None
+    if not domain and origin:
+        from urllib.parse import urlparse
+        domain = urlparse(origin).netloc or None
+    ok, message, expire_at = db.check_card(code, domain=domain)
+    return {"ok": ok, "message": message, "expire_at": expire_at}
+
+
 # ---------------- embed.js ----------------
 
 EMBED_JS = """(function () {
-  var KEY = 'kami_unlocked_until';
-  var now = Date.now();
-  var until = parseInt(localStorage.getItem(KEY) || '0', 10);
-  function unlocked() { return until > now && (until === 1 || until > Date.now()); }
+  var KC = 'kami_code';
+  var SITE = '%SITE%';
+  function post(url, code, cb) {
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'code=' + encodeURIComponent(code) + '&site=' + encodeURIComponent(SITE) })
+      .then(function (r) { return r.json(); }).then(cb)
+      .catch(function () { cb({ ok: false, message: '网络错误，请重试' }); });
+  }
   function unlock() {
     var el = document.getElementById('kami-overlay');
     if (el) el.remove();
   }
-  if (unlocked()) { window.addEventListener('DOMContentLoaded', unlock); return; }
-  function build() {
+  function build(prefill, tip) {
     if (document.getElementById('kami-overlay')) return;
     var overlay = document.createElement('div');
     overlay.id = 'kami-overlay';
@@ -91,36 +115,41 @@ EMBED_JS = """(function () {
     box.innerHTML = ''
       + '<div style="font-size:40px;">\\u{1F511}</div>'
       + '<h2 style="margin:10px 0 6px;color:#1f2340;font-size:22px;">\\u8bf7\\u8f93\\u5165\\u5361\\u5bc6</h2>'
-      + '<p style="margin:0 0 18px;color:#8a8fa8;font-size:13px;">\\u9a8c\\u8bc1\\u901a\\u8fc7\\u540e\\u5373\\u53ef\\u67e5\\u770b\\u672c\\u9875\\u5185\\u5bb9</p>'
+      + '<p style="margin:0 0 18px;color:#8a8fa8;font-size:13px;">' + (tip || '\\u9a8c\\u8bc1\\u901a\\u8fc7\\u540e\\u5373\\u53ef\\u67e5\\u770b\\u672c\\u9875\\u5185\\u5bb9') + '</p>'
       + '<input id="kami-code" placeholder="XXXX-XXXX-XXXX-XXXX" style="width:100%;box-sizing:border-box;padding:12px 14px;border:1.5px solid #dcdff0;border-radius:10px;font-size:16px;letter-spacing:2px;text-align:center;outline:none;transition:border-color .2s;" />'
       + '<button id="kami-btn" style="margin-top:14px;width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-size:16px;cursor:pointer;">\\u9a8c \\u8bc1</button>'
       + '<p id="kami-msg" style="min-height:18px;margin:12px 0 0;color:#ef4444;font-size:13px;"></p>';
     overlay.appendChild(box);
     document.body.appendChild(overlay);
     var input = box.querySelector('#kami-code'), msg = box.querySelector('#kami-msg'), btn = box.querySelector('#kami-btn');
+    if (prefill) input.value = prefill;
     input.focus();
     function shake() { input.style.borderColor = '#ef4444'; box.style.transition = 'transform .1s'; var n = 0; var t = setInterval(function () { n++; box.style.transform = 'translateX(' + (n % 2 ? -6 : 6) + 'px)'; if (n > 5) { clearInterval(t); box.style.transform = ''; } }, 60); }
     function submit() {
       var code = input.value.trim();
       if (!code) { msg.textContent = '\\u8bf7\\u8f93\\u5165\\u5361\\u5bc6'; shake(); return; }
       btn.disabled = true; btn.textContent = '\\u9a8c\\u8bc1\\u4e2d...';
-      fetch('%BASE%/api/verify', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'code=' + encodeURIComponent(code) })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          if (d.ok) {
-            var exp = d.expire_at ? new Date(d.expire_at).getTime() : 1;
-            localStorage.setItem(KEY, String(exp));
-            unlock();
-          } else { msg.textContent = d.message || '\\u9a8c\\u8bc1\\u5931\\u8d25'; shake(); }
-        })
-        .catch(function () { msg.textContent = '\\u7f51\\u7edc\\u9519\\u8bef\\uff0c\\u8bf7\\u91cd\\u8bd5'; })
-        .finally(function () { btn.disabled = false; btn.textContent = '\\u9a8c \\u8bc1'; });
+      post('%BASE%/api/verify', code, function (d) {
+        if (d.ok) {
+          localStorage.setItem(KC, code);
+          unlock();
+        } else { msg.textContent = d.message || '\\u9a8c\\u8bc1\\u5931\\u8d25'; shake(); }
+        btn.disabled = false; btn.textContent = '\\u9a8c \\u8bc1';
+      });
     }
     btn.onclick = submit;
     input.onkeydown = function (e) { if (e.key === 'Enter') submit(); };
     input.oninput = function () { input.style.borderColor = '#dcdff0'; msg.textContent = ''; };
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', build);
+  // 每次进入都用服务器校验一次已保存的卡密（过期/失效立即弹窗）
+  var saved = null;
+  try { saved = localStorage.getItem(KC); } catch (e) {}
+  if (saved) {
+    post('%BASE%/api/check', saved, function (d) {
+      if (d.ok) { window.addEventListener('DOMContentLoaded', unlock); if (document.readyState !== 'loading') unlock(); }
+      else build(saved, d.message);
+    });
+  } else if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { build(); });
   else build();
 })();"""
 
@@ -128,7 +157,9 @@ EMBED_JS = """(function () {
 @app.get("/embed.js")
 async def embed_js(request: Request):
     base = str(request.base_url).rstrip("/")
-    return PlainTextResponse(EMBED_JS.replace("%BASE%", base), media_type="application/javascript")
+    site = request.query_params.get("site") or ""
+    js = EMBED_JS.replace("%BASE%", base).replace("%SITE%", site)
+    return PlainTextResponse(js, media_type="application/javascript")
 
 
 # ---------------- 管理后台 ----------------
@@ -221,6 +252,19 @@ async def logout(kami_session: str | None = Cookie(None)):
     resp = RedirectResponse("/admin")
     resp.delete_cookie("kami_session")
     return resp
+
+
+@app.post("/admin/site/link/{site_id}")
+async def admin_site_link(site_id: int, request: Request, kami_session: str | None = Cookie(None)):
+    """为指定网站生成「指定链接」（admin 自选是否生成；重复调用会轮换 token）"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    r = db.site_token(site_id)
+    if not r:
+        return JSONResponse({"ok": False, "message": "网站不存在"}, status_code=404)
+    domain, tok = r
+    base = str(request.base_url).rstrip("/")
+    return {"ok": True, "domain": domain, "url": f"{base}/s/{tok}"}
 
 
 @app.post("/admin/site/delete/{site_id}")

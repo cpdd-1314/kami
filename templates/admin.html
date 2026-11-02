@@ -93,6 +93,7 @@
           <td>{{ s.created_at }}</td>
           <td>
             <a href="/admin/dashboard?q={{ s.domain }}"><button>查看卡密</button></a>
+            <button class="sitelink" data-id="{{ s.id }}">生成指定链接</button>
             <button class="delsite" data-id="{{ s.id }}">移除</button>
           </td>
         </tr>
@@ -125,6 +126,19 @@ document.querySelectorAll('.del').forEach(function (btn) {
   btn.onclick = function () {
     if (!confirm('确定删除该卡密？')) return;
     fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
+  };
+});
+document.querySelectorAll('.sitelink').forEach(function (btn) {
+  btn.onclick = function () {
+    btn.disabled = true;
+    fetch('/admin/site/link/' + btn.dataset.id, { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false;
+        if (d.ok) {
+          prompt('「' + d.domain + '」的指定链接已生成（可发给该网站使用，重复生成会更换旧链接）：', d.url);
+        } else alert(d.message);
+      });
   };
 });
 document.querySelectorAll('.delsite').forEach(function (btn) {

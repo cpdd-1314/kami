@@ -101,8 +101,30 @@ def create_cards(count: int, duration_days: int, note: str = "", site_domain: st
     return codes
 
 
+def check_card(code: str, domain: str | None = None):
+    """回访校验（不激活、不扣次数）。返回 (ok, message, expire_at)"""
+    code = (code or "").strip().upper()
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
+    conn.close()
+    if not row:
+        return False, "卡密不存在", None
+    if row["site_domain"] and domain and row["site_domain"] != domain:
+        return False, f"该卡密仅限 {row['site_domain']} 使用", None
+    if row["status"] == "used":
+        exp = row["expire_at"]
+        if not exp:
+            return True, "永久有效", None
+        try:
+            if datetime.fromisoformat(exp) > datetime.now():
+                return True, "有效", exp
+        except ValueError:
+            pass
+        return False, "卡密已过期，请重新输入", None
+    return False, "卡密未激活", None
+
+
 def verify_card(code: str, user: str = "", domain: str | None = None):
-    """验证卡密。返回 (ok, message, expire_at)"""
     code = (code or "").strip().upper()
     conn = get_conn()
     row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
@@ -209,6 +231,37 @@ def change_password(username: str, old_pwd: str, new_pwd: str) -> tuple[bool, st
     conn.commit()
     conn.close()
     return True, "密码修改成功，请重新登录"
+
+
+def _ensure_token_column(conn):
+    try:
+        conn.execute("ALTER TABLE sites ADD COLUMN token TEXT")
+    except Exception:
+        pass  # 列已存在
+
+
+def site_token(site_id: int) -> tuple[str, str] | None:
+    """获取（必要时生成）网站指定链接 token。返回 (domain, token)"""
+    conn = get_conn()
+    _ensure_token_column(conn)
+    row = conn.execute("SELECT domain, token FROM sites WHERE id=?", (site_id,)).fetchone()
+    if not row:
+        conn.close()
+        return None
+    tok = row["token"] or secrets.token_urlsafe(16)
+    if not row["token"]:
+        conn.execute("UPDATE sites SET token=? WHERE id=?", (tok, site_id))
+        conn.commit()
+    conn.close()
+    return row["domain"], tok
+
+
+def site_by_token(token: str):
+    conn = get_conn()
+    _ensure_token_column(conn)
+    row = conn.execute("SELECT domain FROM sites WHERE token=?", (token,)).fetchone()
+    conn.close()
+    return row["domain"] if row else None
 
 
 def list_sites():
