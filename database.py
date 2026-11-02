@@ -5,7 +5,11 @@ import hashlib
 import os
 from datetime import datetime, timedelta
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kami.db")
+# 数据库文件路径：可通过环境变量 KAMI_DB_PATH 指定（便于 Zeabur 等平台挂载持久卷，如 /data/kami.db）
+DB_PATH = os.environ.get("KAMI_DB_PATH") or os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "kami.db"
+)
+os.makedirs(os.path.dirname(DB_PATH) or ".", exist_ok=True)
 
 SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # 排除 0 O 1 I
 

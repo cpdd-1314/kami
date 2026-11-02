@@ -1,6 +1,4 @@
-*.db
-*.db-wal
-*.db-shm
+kami.db*
+server.log
 __pycache__/
-.venv/
 *.pyc
