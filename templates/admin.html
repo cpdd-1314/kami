@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理后台 - 卡密系统</title>
-<link rel="stylesheet" href="/static/admin.css?v=7">
+<link rel="stylesheet" href="/static/admin.css?v=8">
 </head>
 <body>
 <div class="topbar">
@@ -24,6 +24,7 @@
   <a href="#sec-generate" data-jump="sec-generate"><i>🎫</i>批量生成卡密</a>
   <a href="#sec-cards" data-jump="sec-cards"><i>📋</i>卡密列表</a>
   <a href="#sec-sites" data-jump="sec-sites"><i>🌐</i>接入的网站</a>
+  <a href="#sec-other" data-jump="sec-other"><i>🧩</i>接入其他软件</a>
   <a href="#add-site-form" id="menu-add-site"><i>➕</i>添加网站</a>
   <a href="#" id="menu-pwd"><i>🔒</i>修改密码</a>
   <a href="/admin/export"><i>⬇️</i>导出 CSV</a>
@@ -232,6 +233,46 @@
       然后在 App 里调用下面的接口。点每行的「接入代码」可直接复制对应示例。</p>
     </div>
   </div>
+
+  <div class="panel" id="sec-other">
+    <h3>接入其他软件</h3>
+    <p class="hint">游戏插件、按键精灵、AutoHotkey、易语言、Delphi、VB6、Go、PHP、Electron、脚本工具……只要你的软件能发 HTTP 请求，就能接入卡密系统。</p>
+
+    <div class="gen-row">
+      <label>接入到哪个对象
+        <select id="o-site">
+          <option value="">— 请选择网站 / App —</option>
+          {% for s in sites %}
+          <option value="{{ s.id }}">{{ s.domain }}{% if '.' not in s.domain %}（App）{% endif %}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>调用方式
+        <select id="o-kind">
+          <option value="http">纯 HTTP 接口（通用）</option>
+          <option value="cli">Windows 命令行 curl</option>
+          <option value="go">Go 参考实现（编译 exe）</option>
+          <option value="all">全部显示</option>
+        </select>
+      </label>
+      <button id="o-btn">查看接入代码</button>
+    </div>
+
+    <div class="steps">
+      <p><b>三步接入</b></p>
+      <p>1️⃣ 在上方选择要接入的网站或 App（没有就去「+ 添加网站」用「自动生成」建一个标识）</p>
+      <p>2️⃣ 点「查看接入代码」，选你的软件类型，整段复制</p>
+      <p>3️⃣ 用户首次打开软件输卡密 → 调 <code>/api/app/verify</code>；之后每次启动调 <code>/api/app/check</code> 复核</p>
+    </div>
+
+    <div class="howto">
+      <b>要点说明</b>
+      <p><b>两个接口</b>：<code>/api/app/verify</code> 首次激活（开始计时）；<code>/api/app/check</code> 后续复核（不重复计时，失效返回 <code>ok:false</code>）。</p>
+      <p><b>三个请求头</b>：<code>X-Kami-App</code> 你的标识、<code>X-Kami-Code</code> 用户卡密、<code>X-Kami-Device</code> 机器码（建议填，用于一台设备限制）。</p>
+      <p><b>判定通过</b>：返回 JSON 里 <code>"ok":true</code> 即放行，否则按 <code>message</code> 提示用户并退出程序。</p>
+      <p><b>机器码怎么取</b>：Windows 用电脑名 <code>%COMPUTERNAME%</code> 或 <code>wmic csproduct get uuid</code>；安卓用 <code>Settings.Secure.ANDROID_ID</code>；其他软件取任意本机固定唯一字符串即可。</p>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -265,7 +306,7 @@
     };
   });
   // ===== 页面切换：一次只显示一个页面 =====
-  var PAGES = ['sec-stats', 'sec-generate', 'sec-cards', 'sec-sites'];
+  var PAGES = ['sec-stats', 'sec-generate', 'sec-cards', 'sec-sites', 'sec-other'];
   window.showPage = function (id) {
     if (id === 'all') {  // 全部一起显示
       PAGES.forEach(function (p) {
@@ -454,6 +495,49 @@ function closeCodePanel() {
   document.querySelector('#ui-modal .ui-body').innerHTML =
     '<input id="ui-input" hidden><pre id="ui-text"></pre>';
   uiHide();
+}
+
+// ===== 接入其他软件 =====
+document.getElementById('o-btn').onclick = function () {
+  var b = this, sid = document.getElementById('o-site').value;
+  if (!sid) { uiAlert('请先选择要接入的网站或 App；还没有的话去「接入的网站 → + 添加网站」建一个', '提示'); return; }
+  b.disabled = true;
+  fetch('/admin/site/code/' + sid, { method: 'POST' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      b.disabled = false;
+      if (!d.ok) { uiAlert(d.message || '获取失败', '获取失败'); return; }
+      var kind = document.getElementById('o-kind').value;
+      var full = d.snippets['其他软件 · 通用 HTTP'] || '';
+      var pick = filterSnippet(full, kind);
+      var one = {};
+      one['其他软件 · ' + ({http:'纯 HTTP 接口', cli:'Windows 命令行', go:'Go 参考实现', all:'全部显示'}[kind])] = pick;
+      openCodePanel({domain: d.domain, is_app: d.is_app, snippets: one});
+    })
+    .catch(function () { b.disabled = false; uiAlert('网络错误，请重试', '获取失败'); });
+};
+
+// 从通用模板里取出指定片段
+function filterSnippet(full, kind) {
+  if (kind === 'all') return full;
+  var lines = full.split('\n');
+  if (kind === 'http') {
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('方式二') >= 0) break;
+      out.push(lines[i]);
+    }
+    return out.join('\n');
+  }
+  if (kind === 'cli') {
+    var s = full.indexOf('方式二'), e = full.indexOf('方式三');
+    return s >= 0 ? full.slice(s, e > s ? e : undefined).replace(/^# ── 方式二/, '# ──').replace(/^# ── /, '') : full;
+  }
+  if (kind === 'go') {
+    var g = full.indexOf('# ── 方式三');
+    return g >= 0 ? full.slice(g).replace(/^# ── 方式三[^\n]*\n/, '') : full;
+  }
+  return full;
 }
 
 function esc(s) {

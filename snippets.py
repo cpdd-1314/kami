@@ -784,6 +784,90 @@ if __name__ == "__main__":
 
 """
 
+    other = r"""# ========== 其他软件 / 通用方式 ==========
+# 适用：AutoHotkey、按键精灵、易语言、Delphi、VB6、Go、PHP、Electron、
+#       游戏插件、脚本工具、任何能发 HTTP 请求的软件
+
+# ── 方式一：纯 HTTP 接口（最通用，任何软件都能调）──────────
+# 首次激活（校验并开始计时）：
+#   POST %(base)s/api/app/verify
+#   Header: X-Kami-App: %(app_id)s
+#   Header: X-Kami-Code: 用户输入的卡密
+#   Header: X-Kami-Device: 本机唯一标识（可选但强烈建议）
+#
+# 之后每次启动复核（不重复计时，失效返回 ok=false）：
+#   POST %(base)s/api/app/check
+#   Header 同上
+#
+# 返回 JSON：
+#   {"ok": true,  "key": "ok",     "message": "验证成功", "expire_text": "永久有效"}
+#   {"ok": false, "key": "expired","message": "卡密已过期"}
+#   {"ok": false, "key": "device", "message": "该卡密已绑定其他设备"}
+#   key 取值：ok / invalid / expired / notyet / limit / device / rate / net
+#
+# ── 方式二：Windows 命令行（bat / AHK / 易语言 可直接调用）──
+#   curl -s -X POST "%(base)s/api/app/verify" ^
+#        -H "X-Kami-App: %(app_id)s" ^
+#        -H "X-Kami-Code: 卡密" ^
+#        -H "X-Kami-Device: %%COMPUTERNAME%%"
+# 返回里出现 "ok":true 就是通过。
+# 机器码用 %%COMPUTERNAME%%（电脑名）或 wmic csproduct get uuid 取硬件码。
+
+# ── 方式三：参考实现（Go，编译成 exe 给任何程序调用）───────
+package main
+
+import (
+    "bytes"; "encoding/json"; "fmt"; "net/http"; "os"; "os/exec"; "strings"; "time"
+)
+
+const baseURL = "%(base)s"
+const appID   = "%(app_id)s"
+
+func call(path, code, device string) map[string]interface{} {
+    req, _ := http.NewRequest("POST", baseURL+path, bytes.NewBufferString(""))
+    req.Header.Set("X-Kami-App", appID)
+    req.Header.Set("X-Kami-Code", code)
+    req.Header.Set("X-Kami-Device", device)
+    c := &http.Client{Timeout: 15 * time.Second}
+    resp, err := c.Do(req)
+    if err != nil { return map[string]interface{}{"ok": false, "message": "网络错误"} }
+    defer resp.Body.Close()
+    var out map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&out)
+    return out
+}
+
+func deviceID() string {
+    out, err := exec.Command("wmic", "csproduct", "get", "uuid").Output()
+    if err != nil { return "unknown" }
+    s := strings.Fields(string(out))
+    if len(s) > 1 { return s[1] }
+    return "unknown"
+}
+
+func main() {
+    cfg := ".kami_code"
+    data, _ := os.ReadFile(cfg)
+    code := strings.TrimSpace(string(data))
+    if code == "" {
+        fmt.Print("请输入卡密：")
+        fmt.Scanln(&code)
+        r := call("/api/app/verify", code, deviceID())
+        if r["ok"] != true { fmt.Println("卡密无效：", r["message"]); os.Exit(1) }
+        os.WriteFile(cfg, []byte(strings.ToUpper(code)), 0600)
+        fmt.Println("验证成功，已激活：", r["expire_text"])
+        return
+    }
+    r := call("/api/app/check", code, deviceID())
+    if r["ok"] != true {
+        os.Remove(cfg)
+        fmt.Println("卡密已失效，请重新输入：", r["message"])
+        os.Exit(1)
+    }
+    fmt.Println("已解锁，到期：", r["expire_text"])
+}
+"""
+
     return {
         "Android · Kotlin": kotlin % {"base": base, "app_id": app_id},
         "Android · Java": java % {"base": base, "app_id": app_id},
@@ -793,4 +877,5 @@ if __name__ == "__main__":
         "网页 / WebView 套壳": webview % {"base": base, "app_id": app_id},
         "Windows · C#": csharp % {"base": base, "app_id": app_id},
         "Python 桌面": python % {"base": base, "app_id": app_id},
+        "其他软件 · 通用 HTTP": other % {"base": base, "app_id": app_id},
     }
