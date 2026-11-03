@@ -201,15 +201,21 @@ def check_card(code: str, domain: str | None = None, device: str = ""):
     """回访校验（不激活、不扣次数）。返回 (ok, message, expire_at, key)"""
     code = (code or "").strip().upper()
     conn = get_conn()
-    row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
-    conn.close()
+    try:
+        row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
+    except Exception:
+        conn.close()
+        raise
     if not row:
+        conn.close()
         return False, "卡密无效", None, "invalid"
     if row["site_domain"] and domain and row["site_domain"] != domain:
+        conn.close()
         return False, f"该卡密仅限 {row['site_domain']} 使用", None, "limit"
     if row["status"] == "used":
         bad = _device_ok(row, device)
         if bad:
+            conn.close()
             return bad
         # 新设备且还有空位 → 追加绑定（多设备卡密）
         try:
@@ -222,6 +228,7 @@ def check_card(code: str, domain: str | None = None, device: str = ""):
             conn.execute("UPDATE cards SET devices=?, device=COALESCE(device,?) WHERE id=?",
                          ("||".join(devs), device, row["id"]))
             conn.commit()
+        conn.close()
         exp = row["expire_at"]
         if not exp:
             return True, "永久有效", None, "ok"
@@ -231,6 +238,7 @@ def check_card(code: str, domain: str | None = None, device: str = ""):
         except ValueError:
             pass
         return False, "卡密已过期", None, "expired"
+    conn.close()
     return False, "卡密未激活", None, "notyet"
 
 

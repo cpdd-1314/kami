@@ -523,22 +523,24 @@ document.getElementById('o-btn').onclick = function () {
 // 从通用模板里取出指定片段
 function filterSnippet(full, kind) {
   if (kind === 'all') return full;
-  var lines = full.split('\n');
+  var i1 = full.indexOf('方式一'), i2 = full.indexOf('方式二');
+  var ifaq = full.indexOf('【常见问题】');
+  // 纯 HTTP：只到「方式一」之前（接口说明 + 返回格式）
   if (kind === 'http') {
-    var out = [];
-    for (var i = 0; i < lines.length; i++) {
-      if (lines[i].indexOf('方式二') >= 0) break;
-      out.push(lines[i]);
-    }
-    return out.join('\n');
+    var end = i2 > 0 ? i2 : (ifaq > 0 ? ifaq : full.length);
+    return full.slice(0, end).replace(/\s+$/, '');
   }
+  // Windows 命令行：方式一 → 方式二之前
   if (kind === 'cli') {
-    var s = full.indexOf('方式二'), e = full.indexOf('方式三');
-    return s >= 0 ? full.slice(s, e > s ? e : undefined).replace(/^# ── 方式二/, '# ──').replace(/^# ── /, '') : full;
+    if (i1 < 0) return full;
+    var e = i2 > i1 ? i2 : (ifaq > i1 ? ifaq : full.length);
+    return full.slice(i1, e).replace(/\s+$/, '');
   }
+  // Go：方式二 → 常见问题之前
   if (kind === 'go') {
-    var g = full.indexOf('# ── 方式三');
-    return g >= 0 ? full.slice(g).replace(/^# ── 方式三[^\n]*\n/, '') : full;
+    if (i2 < 0) return full;
+    var g = ifaq > i2 ? ifaq : full.length;
+    return full.slice(i2, g).replace(/\s+$/, '');
   }
   return full;
 }

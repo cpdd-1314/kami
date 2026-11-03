@@ -474,8 +474,8 @@ async def admin_site_add(
     if not ok:
         return JSONResponse({"ok": False, "message": msg}, status_code=400)
     base = base_url(request)
-    r = db.site_token(row["id"])
-    link = f"{base}/s/{r[1]}" if r else ""
+    slug = (row.get("panel_slug") or "").strip()
+    panel = f"{base}/panel/{slug or row.get('token', '')}"
     return {
         "ok": True,
         "id": row["id"],
@@ -483,7 +483,7 @@ async def admin_site_add(
         "embed": f'<script src="{base}/embed.js?site={row["domain"]}"></script>',
         "is_app": "." not in row["domain"],
         "api": f"{base}/api/app/verify",
-        "link": link,
+        "panel": panel,
     }
 
 
