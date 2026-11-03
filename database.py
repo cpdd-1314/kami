@@ -180,7 +180,9 @@ def _device_ok(row, device: str):
     if not limit:
         return None
     if not device:
-        return False, "本设备无法完成验证。如卡密无法使用，请购买新的卡密", None, "device"
+        # 未提供设备号：说明是老版本客户端（没传 X-Kami-Device）
+        # 不拦截，否则升级前的 App 全部无法使用；但也不新增绑定
+        return None
     devs = _dev_list(row)
     if not devs:
         return None                      # 尚未绑定，首次激活

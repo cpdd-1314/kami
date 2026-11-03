@@ -98,6 +98,17 @@ object Kami {
         }, 5 * 60 * 1000L, 5 * 60 * 1000L)
     }
 
+    // 设备唯一标识：安卓系统级 ID，卸载重装/重启都不变
+    private var deviceId: String = "unknown"
+
+    fun init(ctx: Context) {
+        deviceId = try {
+            android.provider.Settings.Secure.getString(
+                ctx.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "unknown"
+        } catch (e: Exception) { "unknown" }
+    }
+
     private fun post(url: String, code: String, cb: (Result) -> Unit, onSuccess: () -> Unit) {
         val body = JSONObject().put("code", code).put("app", APP_ID).toString()
             .toRequestBody("application/json".toMediaType())
@@ -106,6 +117,7 @@ object Kami {
             .post(body)
             .header("X-Kami-Code", code)
             .header("X-Kami-App", APP_ID)
+            .header("X-Kami-Device", deviceId)
             .build()
         http.newCall(req).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -166,6 +178,7 @@ public class Kami {
     private static final String KEY = "kami_code";
     private static final OkHttpClient HTTP = new OkHttpClient();
     private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+    private static String DEVICE = "unknown";
 
     public interface Callback2 { void onResult(boolean ok, String key, String message, String expireText); }
 
@@ -217,6 +230,15 @@ public class Kami {
         }, 5, 5, java.util.concurrent.TimeUnit.MINUTES);
     }
 
+    // 设备唯一标识：安卓系统级 ID，卸载重装/重启都不变
+    public static void init(Context ctx) {
+        try {
+            DEVICE = android.provider.Settings.Secure.getString(
+                    ctx.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
+        } catch (Exception e) { DEVICE = "unknown"; }
+        if (DEVICE == null) DEVICE = "unknown";
+    }
+
     private static void post(String url, String code, Callback2 cb) {
         String json = "{\\"code\\":\\"" + code + "\\",\\"app\\":\\"" + APP_ID + "\\"}";
         Request req = new Request.Builder()
@@ -224,6 +246,7 @@ public class Kami {
                 .post(RequestBody.create(json, JSON))
                 .header("X-Kami-Code", code)
                 .header("X-Kami-App", APP_ID)
+                .header("X-Kami-Device", DEVICE)
                 .build();
         HTTP.newCall(req).enqueue(new okhttp3.Callback() {
             public void onFailure(Call call, java.io.IOException e) {
@@ -249,6 +272,8 @@ public class Kami {
 // pubspec.yaml 加：http: ^1.2.0   shared_preferences: ^2.2.0
 
 import 'dart:async';
+import 'dart:io';
+import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -287,8 +312,25 @@ class Kami {
   /// 每次启动校验（不激活、不扣时长）
   static Future<Map> check(String code) => _post('/api/app/check', code);
 
+  /// 设备唯一标识：存在 SharedPreferences，重装/重启都保留
+  static String _device = '';
+  static Future<String> deviceId() async {
+    if (_device.isNotEmpty) return _device;
+    final sp = await SharedPreferences.getInstance();
+    var v = sp.getString('kami_device_id');
+    if (v == null || v.isEmpty) {
+      // 优先用平台设备信息，取不到则生成并持久化
+      v = '${Platform.operatingSystem}-${DateTime.now().microsecondsSinceEpoch}-'
+          '${Random().nextInt(999999)}';
+      await sp.setString('kami_device_id', v);
+    }
+    _device = v;
+    return v;
+  }
+
   static Future<Map> _post(String path, String code) async {
     try {
+      final dev = await deviceId();
       final res = await http
           .post(
             Uri.parse('$base$path'),
@@ -296,6 +338,7 @@ class Kami {
               'Content-Type': 'application/json',
               'X-Kami-Code': code,
               'X-Kami-App': appId,
+              'X-Kami-Device': dev,
             },
             body: jsonEncode({'code': code, 'app': appId}),
           )
@@ -366,8 +409,22 @@ export async function clearCode() {
   await AsyncStorage.removeItem(KEY);
 }
 
+// 设备唯一标识：存 AsyncStorage，重启不丢
+let _device = null;
+async function deviceId() {
+  if (_device) return _device;
+  let v = await AsyncStorage.getItem('kami_device_id');
+  if (!v) {
+    v = 'rn-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    await AsyncStorage.setItem('kami_device_id', v);
+  }
+  _device = v;
+  return v;
+}
+
 async function post(path, code) {
   try {
+    const dev = await deviceId();
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 15000);
     const res = await fetch(BASE + path, {
@@ -376,6 +433,7 @@ async function post(path, code) {
         'Content-Type': 'application/json',
         'X-Kami-Code': code,
         'X-Kami-App': APP_ID,
+        'X-Kami-Device': dev,
       },
       body: JSON.stringify({ code, app: APP_ID }),
       signal: ctl.signal,
@@ -452,6 +510,16 @@ final class Kami {
     }
     static func clear() { UserDefaults.standard.removeObject(forKey: keyName) }
 
+    // 设备唯一标识：identifierForVendor + Keychain 持久化，重启/重装都保留
+    static var deviceId: String {
+        let k = "kami_device_id"
+        if let v = UserDefaults.standard.string(forKey: k), !v.isEmpty { return v }
+        let v = UIDevice.current.identifierForVendor?.uuidString
+            ?? UUID().uuidString
+        UserDefaults.standard.set(v, forKey: k)
+        return v
+    }
+
     struct Result {
         let ok: Bool
         let key: String
@@ -467,7 +535,8 @@ final class Kami {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue(code, forHTTPHeaderField: "X-Kami-Code")
         req.setValue(appId, forHTTPHeaderField: "X-Kami-App")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code, "app": appId])
+        req.setValue(deviceId, forHTTPHeaderField: "X-Kami-Device")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["code": code, "app": appId, "device": deviceId])
 
         URLSession.shared.dataTask(with: req) { data, _, err in
             guard let data = data,
@@ -543,11 +612,22 @@ final class Kami {
 const BASE = '%(base)s';
 const APP_ID = '%(app_id)s';
 
+// 设备唯一标识：持久化在 localStorage，重启不丢
+function kamiDevice() {
+  var k = 'kami_device_id';
+  var v = localStorage.getItem(k);
+  if (!v) {
+    v = 'wv-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem(k, v);
+  }
+  return v;
+}
+
 async function kamiVerify(code) {
   const res = await fetch(BASE + '/api/app/verify', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Kami-Code': code, 'X-Kami-App': APP_ID },
-    body: JSON.stringify({ code, app: APP_ID })
+    headers: { 'Content-Type': 'application/json', 'X-Kami-Code': code, 'X-Kami-App': APP_ID, 'X-Kami-Device': kamiDevice() },
+    body: JSON.stringify({ code, app: APP_ID, device: kamiDevice() })
   });
   return res.json();   // { ok, key, message, expire_at, expire_text, days_left }
 }
@@ -555,8 +635,8 @@ async function kamiVerify(code) {
 async function kamiCheck(code) {
   const res = await fetch(BASE + '/api/app/check', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Kami-Code': code, 'X-Kami-App': APP_ID },
-    body: JSON.stringify({ code, app: APP_ID })
+    headers: { 'Content-Type': 'application/json', 'X-Kami-Code': code, 'X-Kami-App': APP_ID, 'X-Kami-Device': kamiDevice() },
+    body: JSON.stringify({ code, app: APP_ID, device: kamiDevice() })
   });
   return res.json();
 }
@@ -621,6 +701,24 @@ public static class Kami
         public int? days_left { get; set; }
     }
 
+    // 设备唯一标识：注册表持久化，重启不丢
+    private static string DeviceId
+    {
+        get
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(@"Software\\KamiGate");
+                var v = key?.GetValue("device_id") as string;
+                if (!string.IsNullOrEmpty(v)) return v;
+                v = Environment.MachineName + "-" + Guid.NewGuid().ToString("N");
+                key?.SetValue("device_id", v);
+                return v;
+            }
+            catch { return Environment.MachineName; }
+        }
+    }
+
     private static async Task<Result> PostAsync(string path, string code)
     {
         try
@@ -628,8 +726,9 @@ public static class Kami
             var req = new HttpRequestMessage(HttpMethod.Post, Base + path);
             req.Headers.Add("X-Kami-Code", code);
             req.Headers.Add("X-Kami-App", AppId);
+            req.Headers.Add("X-Kami-Device", DeviceId);
             req.Content = new StringContent(
-                JsonSerializer.Serialize(new { code, app = AppId }),
+                JsonSerializer.Serialize(new { code, app = AppId, device = DeviceId }),
                 Encoding.UTF8, "application/json");
 
             var resp = await Http.SendAsync(req);
@@ -694,12 +793,29 @@ APP_ID = "%(app_id)s"
 TIMEOUT = 15
 
 
+def _device_id():
+    \"\"\"设备唯一标识：存文件，重启不丢\"\"\"
+    import os, uuid, platform
+    path = os.path.join(os.path.expanduser("~"), ".kami_device_id")
+    try:
+        if os.path.exists(path):
+            v = open(path, encoding="utf-8").read().strip()
+            if v:
+                return v
+        v = "{}-{}".format(platform.node(), uuid.getnode())
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(v)
+        return v
+    except Exception:
+        return "{}-{}".format(platform.node(), uuid.getnode())
+
+
 def _post(path, code):
     try:
         r = requests.post(
             BASE + path,
-            json={"code": code, "app": APP_ID},
-            headers={"X-Kami-Code": code, "X-Kami-App": APP_ID},
+            json={"code": code, "app": APP_ID, "device": _device_id()},
+            headers={"X-Kami-Code": code, "X-Kami-App": APP_ID, "X-Kami-Device": _device_id()},
             timeout=TIMEOUT,
         )
         return r.json()
