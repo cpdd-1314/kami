@@ -316,8 +316,8 @@ async def embed_js(request: Request):
     )
     return PlainTextResponse(
         js,
-        media_type="application/javascript",
-        headers={"Cache-Control": "no-cache, max-age=60", "Access-Control-Allow-Origin": "*"},
+        media_type="application/javascript; charset=utf-8",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Access-Control-Allow-Origin": "*"},
     )
 
 

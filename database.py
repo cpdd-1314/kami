@@ -180,7 +180,7 @@ def _device_ok(row, device: str):
     if not limit:
         return None
     if not device:
-        return False, "无法识别设备，请用正常浏览器打开", None, "device"
+        return False, "本设备无法完成验证。如卡密无法使用，请购买新的卡密", None, "device"
     devs = _dev_list(row)
     if not devs:
         return None                      # 尚未绑定，首次激活
@@ -192,7 +192,7 @@ def _device_ok(row, device: str):
             return None                  # 同机换盐 → 放行
     if len(devs) < limit:
         return None                      # 还有空位（激活流程会把它加入设备池）
-    return False, f"该卡密已绑定 {len(devs)} 台设备，无法在此设备使用", None, "device"
+    return False, f"此卡密已在其他设备使用，本设备无法验证。如需在本设备使用，请购买新的卡密", None, "device"
 
 
 def check_card(code: str, domain: str | None = None, device: str = ""):
@@ -288,7 +288,7 @@ def verify_card(code: str, user: str = "", domain: str | None = None, device: st
             limit = 0 if row["multi_device"] else 1
         if limit and len(devs) >= limit:
             conn.close()
-            return False, f"该卡密已绑定 {len(devs)} 台设备，无法在此设备使用", None, "device"
+            return False, f"此卡密已在其他设备使用，本设备无法验证。如需在本设备使用，请购买新的卡密", None, "device"
         devs.append(device)
     conn.execute(
         "UPDATE cards SET status='used', used_at=?, expire_at=?, used_by=?, site_domain=COALESCE(?, site_domain), device=COALESCE(?, device), devices=? WHERE id=?",
