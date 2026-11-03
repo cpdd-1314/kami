@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理后台 - 卡密系统</title>
-<link rel="stylesheet" href="/static/admin.css?v=8">
+<link rel="stylesheet" href="/static/admin.css?v=9">
 </head>
 <body>
 <div class="topbar">
@@ -57,8 +57,10 @@
       <label>备注 <input id="g-note" placeholder="选填"></label>
       <label>设备限制
         <select id="g-dev">
-          <option value="0">仅限一台设备（默认）</option>
-          <option value="1">不限设备</option>
+          <option value="1">仅限 1 台设备（默认）</option>
+          <option value="2">最多 2 台设备</option>
+          <option value="3">最多 3 台设备</option>
+          <option value="0">不限设备</option>
         </select>
       </label>
       <button id="g-btn">生成</button>
@@ -82,7 +84,7 @@
       <button type="submit">筛选</button>
     </form>
     <div class="table-scroll"><table>
-      <thead><tr><th>卡密</th><th>状态</th><th>有效天数</th><th>到期时间</th><th>使用者</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
+      <thead><tr><th>卡密</th><th>状态</th><th>有效天数</th><th>到期时间</th><th>使用者</th><th>设备</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>
       {% for c in cards %}
         <tr>
@@ -91,12 +93,13 @@
           <td>{{ '永久' if c.duration_days==0 else c.duration_days ~ ' 天' }}</td>
           <td>{{ c.expire_at or '—' }}</td>
           <td>{{ c.used_by or '—' }}</td>
+          <td>{{ c.device_text }}</td>
           <td>{{ c.site_domain or '全网通用' }}</td>
           <td>{{ c.note or '—' }}</td>
           <td><button class="del" data-id="{{ c.id }}">删除</button></td>
         </tr>
       {% else %}
-        <tr><td colspan="8" class="empty">暂无卡密，请先生成</td></tr>
+        <tr><td colspan="9" class="empty">暂无卡密，请先生成</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
@@ -369,7 +372,7 @@ document.getElementById('g-btn').onclick = function () {
            + '&duration_days=' + document.getElementById('g-days').value
            + '&site_domain=' + encodeURIComponent(document.getElementById('g-site').value)
            + '&note=' + encodeURIComponent(document.getElementById('g-note').value)
-           + '&multi_device=' + document.getElementById('g-dev').value;
+           + '&max_devices=' + document.getElementById('g-dev').value;
   fetch('/admin/generate', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
     .then(function (r) { return r.json(); })
     .then(function (d) {

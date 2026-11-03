@@ -54,6 +54,8 @@ def init_db():
     for col, ddl in (
         ("device", "ALTER TABLE cards ADD COLUMN device TEXT"),
         ("multi_device", "ALTER TABLE cards ADD COLUMN multi_device INTEGER NOT NULL DEFAULT 0"),
+        ("max_devices", "ALTER TABLE cards ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 1"),
+        ("devices", "ALTER TABLE cards ADD COLUMN devices TEXT"),
     ):
         try:
             conn.execute(ddl)
@@ -128,15 +130,15 @@ def generate_code() -> str:
             return code
 
 
-def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None, multi_device: bool = False) -> list[str]:
+def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None, max_devices: int = 1) -> list[str]:
     conn = get_conn()
     codes = []
     now = datetime.now().isoformat(timespec="seconds")
     for _ in range(min(max(count, 1), 500)):
         code = generate_code()
         conn.execute(
-            "INSERT INTO cards (code, status, duration_days, created_at, site_domain, note, multi_device) VALUES (?,?,?,?,?,?,?)",
-            (code, "unused", duration_days, now, site_domain, note, 1 if multi_device else 0),
+            "INSERT INTO cards (code, status, duration_days, created_at, site_domain, note, multi_device, max_devices) VALUES (?,?,?,?,?,?,?,?)",
+            (code, "unused", duration_days, now, site_domain, note, 1 if not max_devices else 0, max(0, int(max_devices))),
         )
         codes.append(code)
     conn.commit()
@@ -148,16 +150,49 @@ def create_cards(count: int, duration_days: int, note: str = "", site_domain: st
     except Exception:
         pass
 
+def _fp(device: str) -> str:
+    """取设备标识中的硬件指纹部分"""
+    return device.partition("#")[2] if device else ""
+
+
+def _dev_list(row) -> list[str]:
+    """已绑定的设备列表（兼容旧数据：只有 device 单设备）"""
+    raw = row["devices"] if "devices" in row.keys() else None
+    lst = [x for x in (raw or "").split("||") if x]
+    old = row["device"] if "device" in row.keys() else None
+    if old and old not in lst:
+        lst.append(old)
+    return lst
+
+
 def _device_ok(row, device: str):
-    """设备限制：multi_device=0 时只能在绑定的设备上使用。返回 None 或错误元组"""
-    if row["multi_device"]:
+    """设备限制校验（仅用于「复核」，不新增设备）。返回 None 通过，否则错误元组
+
+    规则（按 max_devices）：
+      - max_devices=0 → 不限设备
+      - max_devices≥1 → 只能在已绑定设备上使用，最多绑定这么多台
+      - 指纹（# 后半段）一致视为同一台机器（清缓存换盐也放行）
+    """
+    try:
+        limit = row["max_devices"]
+    except (IndexError, KeyError):
+        limit = 0 if row["multi_device"] else 1
+    if not limit:
         return None
-    bound = row["device"]
-    if not bound or not device:
-        return None  # 无设备信息（如老版本客户端）不拦截
-    if bound != device:
-        return False, "该卡密已绑定其他设备，无法在此设备使用", None, "device"
-    return None
+    if not device:
+        return False, "无法识别设备，请用正常浏览器打开", None, "device"
+    devs = _dev_list(row)
+    if not devs:
+        return None                      # 尚未绑定，首次激活
+    fp = _fp(device)
+    for d in devs:
+        if d == device:
+            return None
+        if fp and _fp(d) == fp:
+            return None                  # 同机换盐 → 放行
+    if len(devs) < limit:
+        return None                      # 还有空位（激活流程会把它加入设备池）
+    return False, f"该卡密已绑定 {len(devs)} 台设备，无法在此设备使用", None, "device"
 
 
 def check_card(code: str, domain: str | None = None, device: str = ""):
@@ -174,6 +209,17 @@ def check_card(code: str, domain: str | None = None, device: str = ""):
         bad = _device_ok(row, device)
         if bad:
             return bad
+        # 新设备且还有空位 → 追加绑定（多设备卡密）
+        try:
+            limit = row["max_devices"]
+        except (IndexError, KeyError):
+            limit = 0 if row["multi_device"] else 1
+        devs = _dev_list(row)
+        if limit and device and device not in devs and len(devs) < limit:
+            devs.append(device)
+            conn.execute("UPDATE cards SET devices=?, device=COALESCE(device,?) WHERE id=?",
+                         ("||".join(devs), device, row["id"]))
+            conn.commit()
         exp = row["expire_at"]
         if not exp:
             return True, "永久有效", None, "ok"
@@ -203,26 +249,51 @@ def verify_card(code: str, user: str = "", domain: str | None = None, device: st
         if bad:
             conn.close()
             return bad
+        # 有效期判断（注意：永久卡密 expire_at 为空）
         exp = row["expire_at"]
         if exp:
             try:
-                if datetime.fromisoformat(exp) > now:
+                if datetime.fromisoformat(exp) <= now:
                     conn.close()
-                    return True, "卡密有效", exp, "ok"  # 已激活未到期，视为有效
+                    return False, "卡密已过期", None, "expired"
             except ValueError:
                 pass
+        # 新设备且还有空位 → 追加绑定（多设备卡密）
+        try:
+            limit = row["max_devices"]
+        except (IndexError, KeyError):
+            limit = 0 if row["multi_device"] else 1
+        devs = _dev_list(row)
+        if limit and device and device not in devs and len(devs) < limit:
+            devs.append(device)
+            conn.execute("UPDATE cards SET devices=?, device=COALESCE(device,?) WHERE id=?",
+                         ("||".join(devs), device, row["id"]))
+            conn.commit()
         conn.close()
-        return False, "卡密已过期", None, "expired"
+        if exp:
+            return True, "卡密有效", exp, "ok"
+        return True, "永久有效", None, "ok"
     # 激活
     expire_at = (
         (now + timedelta(days=row["duration_days"])).isoformat(timespec="seconds")
         if row["duration_days"] > 0
         else None
     )
+    # 绑定设备到设备池（受 max_devices 限制）
+    devs = _dev_list(row)
+    if device and device not in devs:
+        try:
+            limit = row["max_devices"]
+        except (IndexError, KeyError):
+            limit = 0 if row["multi_device"] else 1
+        if limit and len(devs) >= limit:
+            conn.close()
+            return False, f"该卡密已绑定 {len(devs)} 台设备，无法在此设备使用", None, "device"
+        devs.append(device)
     conn.execute(
-        "UPDATE cards SET status='used', used_at=?, expire_at=?, used_by=?, site_domain=COALESCE(?, site_domain), device=COALESCE(?, device) WHERE id=?",
+        "UPDATE cards SET status='used', used_at=?, expire_at=?, used_by=?, site_domain=COALESCE(?, site_domain), device=COALESCE(?, device), devices=? WHERE id=?",
         (now.isoformat(timespec="seconds"), expire_at, user, domain,
-         (device or user or None) if not row["multi_device"] else None, row["id"]),
+         (device or user or None), "||".join(devs), row["id"]),
     )
     # 登记接入网站
     if domain:
@@ -262,6 +333,18 @@ def list_cards(status: str | None = None, q: str | None = None, domain: str | No
             r["expire_at"] and r["status"] == "used"
             and _expired(r["expire_at"], now)
         )
+        # 设备信息可读化
+        try:
+            limit = r["max_devices"]
+        except KeyError:
+            limit = 0 if r["multi_device"] else 1
+        cnt = len(_dev_list(r))
+        if not limit:
+            r["device_text"] = "不限设备"
+        elif cnt == 0:
+            r["device_text"] = f"未绑定（限 {limit} 台）"
+        else:
+            r["device_text"] = f"{cnt}/{limit} 台"
     return rows
 
 

@@ -377,7 +377,7 @@ async def generate(
     duration_days: int = Form(0),
     note: str = Form(""),
     site_domain: str = Form(""),
-    multi_device: int = Form(0),
+    max_devices: int = Form(1),
 ):
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
@@ -387,7 +387,7 @@ async def generate(
             {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先在「添加网站」中登记"},
             status_code=400,
         )
-    codes = db.create_cards(count, duration_days, fix_enc(note), site_domain or None, multi_device=bool(multi_device))
+    codes = db.create_cards(count, duration_days, fix_enc(note), site_domain or None, max_devices=min(max(int(max_devices), 0), 10))
     return {"ok": True, "codes": codes}
 
 

@@ -116,11 +116,24 @@
 
   btn.textContent = tr('btn');
   function devId() {
+    // 浏览器设备指纹：屏幕 + 时区 + 语言 + 硬件并发 + 平台 + 本地随机盐
+    // 清缓存后盐会换，但指纹部分不变；服务端按「盐 + 指纹」双校验，双保险
     try {
       var k = 'kami_device';
       var v = localStorage.getItem(k);
-      if (!v) { v = 'dev-' + Math.random().toString(36).slice(2) + Date.now().toString(36); localStorage.setItem(k, v); }
-      return v;
+      var fp = [
+        screen.width + 'x' + screen.height, screen.colorDepth,
+        new Date().getTimezoneOffset(),
+        (navigator.language || ''),
+        (navigator.hardwareConcurrency || 0),
+        (navigator.platform || ''),
+        (navigator.userAgent || '').length
+      ].join('|');
+      if (!v) {
+        v = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+        localStorage.setItem(k, v);
+      }
+      return v + '#' + fp;
     } catch (e) { return ''; }
   }
   function call(api, code, cb) {
