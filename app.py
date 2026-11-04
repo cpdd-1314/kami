@@ -78,7 +78,7 @@ def check_rate(ip: str) -> bool:
 
 def card_view(r: dict) -> dict:
     st = "已过期" if r["is_expired"] else ("已使用" if r["status"] == "used" else "未使用")
-    return {**r, "status_text": st}
+    return {**r, "status_text": st, "duration_text": db.duration_text(r["duration_days"], r.get("duration_min", 0))}
 
 
 # ---------------- 用户端 ----------------
@@ -110,7 +110,15 @@ async def panel_page(token: str, request: Request):
 
 
 def _panel_domain(token: str) -> str | None:
-    return db.site_by_token((token or "").strip())
+    conn = db.get_conn()
+    try:
+        row = conn.execute(
+            "SELECT domain FROM sites WHERE token=? OR IFNULL(panel_slug,'')=?",
+            ((token or "").strip(), (token or "").strip()),
+        ).fetchone()
+        return row["domain"] if row else None
+    finally:
+        conn.close()
 
 
 @app.post("/panel/api/data")
@@ -129,7 +137,7 @@ async def panel_data(request: Request, token: str = Form("")):
         "cards": [
             {
                 "code": c["code"], "status": c["status"],
-                "days": c["duration_days"],
+                "days": db.duration_text(c["duration_days"], c.get("duration_min", 0)),
                 "expire": c["expire_at"], "expired": c["is_expired"],
                 "by": c["used_by"], "note": c["note"],
             }
@@ -140,13 +148,17 @@ async def panel_data(request: Request, token: str = Form("")):
 
 @app.post("/panel/api/generate")
 async def panel_generate(request: Request, token: str = Form(""), count: int = Form(1),
-                         days: int = Form(30), note: str = Form("")):
+                         days: int = Form(30), hours: int = Form(0), minutes: int = Form(0),
+                         note: str = Form("")):
     domain = _panel_domain(token)
     if not domain:
         return JSONResponse({"ok": False, "message": "面板链接无效"}, status_code=404)
     count = min(max(count, 1), 100)
     days = min(max(days, 0), 3650)
-    codes = db.create_cards(count, days, note=fix_enc(note)[:50], site_domain=domain)
+    hours = min(max(hours, 0), 23)
+    minutes = min(max(minutes, 0), 59)
+    codes = db.create_cards(count, days, note=fix_enc(note)[:50], site_domain=domain,
+                            duration_min=hours * 60 + minutes)
     return {"ok": True, "codes": codes}
 
 
@@ -355,7 +367,8 @@ async def dashboard(request: Request, kami_session: str | None = Cookie(None)):
         return RedirectResponse("/admin")
     status = request.query_params.get("status") or None
     q = request.query_params.get("q") or None
-    cards = [card_view(r) for r in db.list_cards(status, q)]
+    domain = request.query_params.get("domain") or None
+    cards = [card_view(r) for r in db.list_cards(status, q, domain)]
     return templates.TemplateResponse(
         "admin.html",
         {
@@ -365,6 +378,7 @@ async def dashboard(request: Request, kami_session: str | None = Cookie(None)):
             "sites": db.list_sites(),
             "status": status or "",
             "q": q or "",
+            "domain": domain or "",
             "base": base_url(request),
         },
     )
@@ -375,6 +389,7 @@ async def generate(
     kami_session: str | None = Cookie(None),
     count: int = Form(10),
     duration_days: int = Form(0),
+    duration_min: int = Form(0),
     note: str = Form(""),
     site_domain: str = Form(""),
     max_devices: int = Form(1),
@@ -387,8 +402,24 @@ async def generate(
             {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先在「添加网站」中登记"},
             status_code=400,
         )
-    codes = db.create_cards(count, duration_days, fix_enc(note), site_domain or None, max_devices=min(max(int(max_devices), 0), 10))
+    duration_days = min(max(duration_days, 0), 3650)
+    duration_min = min(max(duration_min, 0), 3650 * 1440)
+    if duration_days == 0 and duration_min == 0:
+        pass  # 永久卡
+    codes = db.create_cards(
+        count, duration_days, fix_enc(note), site_domain or None,
+        max_devices=min(max(int(max_devices), 0), 10), duration_min=duration_min,
+    )
     return {"ok": True, "codes": codes}
+
+
+@app.post("/admin/extend/{card_id}")
+async def extend(card_id: int, kami_session: str | None = Cookie(None),
+                 days: int = Form(0), hours: int = Form(0), minutes: int = Form(0)):
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    ok, msg = db.extend_card(card_id, days, hours, minutes)
+    return {"ok": ok, "message": msg}
 
 
 @app.post("/admin/delete/{card_id}")
@@ -539,7 +570,7 @@ async def export(kami_session: str | None = Cookie(None)):
     w = csv.writer(buf)
     w.writerow(["卡密", "状态", "有效天数", "创建时间", "使用时间", "到期时间", "使用者", "绑定网站", "备注"])
     for r in db.list_cards():
-        w.writerow([r["code"], card_view(r)["status_text"], r["duration_days"], r["created_at"],
+        w.writerow([r["code"], card_view(r)["status_text"], card_view(r)["duration_text"], r["created_at"],
                     r["used_at"] or "", r["expire_at"] or "", r["used_by"] or "", r["site_domain"] or "全网通用", r["note"] or ""])
     buf.seek(0)
     return StreamingResponse(

@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>管理后台 - 卡密系统</title>
-<link rel="stylesheet" href="/static/admin.css?v=9">
+<link rel="stylesheet" href="/static/admin.css?v=10">
 </head>
 <body>
 <div class="topbar">
@@ -45,7 +45,13 @@
     <h3>批量生成卡密</h3>
     <div class="gen-row">
       <label>数量 <input id="g-count" type="number" value="10" min="1" max="500"></label>
-      <label>有效天数 <input id="g-days" type="number" value="30" min="0">（0=永久）</label>
+      <label>有效期 <input id="g-days" type="number" value="30" min="0">
+        <select id="g-unit">
+          <option value="day">天（0=永久）</option>
+          <option value="hour">小时</option>
+          <option value="minute">分钟</option>
+        </select>
+      </label>
       <label>绑定网站
         <select id="g-site" {% if not sites %}disabled{% endif %}>
           <option value="">全网通用</option>
@@ -80,23 +86,33 @@
         <option value="unused" {% if status=='unused' %}selected{% endif %}>未使用</option>
         <option value="used" {% if status=='used' %}selected{% endif %}>已使用</option>
       </select>
-      <input name="q" value="{{ q }}" placeholder="搜索卡密/备注">
+      <select name="domain">
+        <option value="">全部绑定</option>
+        <option value="__none__" {% if domain=='__none__' %}selected{% endif %}>全网通用（未绑定）</option>
+        {% for s in sites %}
+        <option value="{{ s.domain }}" {% if domain==s.domain %}selected{% endif %}>{{ s.domain }}</option>
+        {% endfor %}
+      </select>
+      <input name="q" value="{{ q }}" placeholder="搜索卡密/备注/使用者">
       <button type="submit">筛选</button>
     </form>
     <div class="table-scroll"><table>
-      <thead><tr><th>卡密</th><th>状态</th><th>有效天数</th><th>到期时间</th><th>使用者</th><th>设备</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
+      <thead><tr><th>卡密</th><th>状态</th><th>有效期</th><th>到期时间</th><th>使用者</th><th>设备</th><th>绑定网站</th><th>备注</th><th>操作</th></tr></thead>
       <tbody>
       {% for c in cards %}
         <tr>
           <td class="code">{{ c.code }}</td>
           <td><span class="tag {{ 'tag-expired' if c.is_expired else ('tag-used' if c.status=='used' else 'tag-unused') }}">{{ c.status_text }}</span></td>
-          <td>{{ '永久' if c.duration_days==0 else c.duration_days ~ ' 天' }}</td>
+          <td>{{ c.duration_text }}</td>
           <td>{{ c.expire_at or '—' }}</td>
           <td>{{ c.used_by or '—' }}</td>
           <td>{{ c.device_text }}</td>
           <td>{{ c.site_domain or '全网通用' }}</td>
           <td>{{ c.note or '—' }}</td>
-          <td><button class="del" data-id="{{ c.id }}">删除</button></td>
+          <td>
+            <button class="ext" data-id="{{ c.id }}" data-code="{{ c.code }}">续期</button>
+            <button class="del" data-id="{{ c.id }}">删除</button>
+          </td>
         </tr>
       {% else %}
         <tr><td colspan="9" class="empty">暂无卡密，请先生成</td></tr>
@@ -368,8 +384,16 @@
 
 document.getElementById('g-btn').onclick = function () {
   var b = this; b.disabled = true;
+  var v = parseInt(document.getElementById('g-days').value || '0', 10);
+  if (isNaN(v) || v < 0) v = 0;
+  var unit = document.getElementById('g-unit').value;
+  var dd = 0, dm = 0;
+  if (unit === 'day')   { dd = v; }                 // 天，0=永久
+  if (unit === 'hour')  { dm = v * 60; }
+  if (unit === 'minute'){ dm = v; }
   var body = 'count=' + document.getElementById('g-count').value
-           + '&duration_days=' + document.getElementById('g-days').value
+           + '&duration_days=' + dd
+           + '&duration_min=' + dm
            + '&site_domain=' + encodeURIComponent(document.getElementById('g-site').value)
            + '&note=' + encodeURIComponent(document.getElementById('g-note').value)
            + '&max_devices=' + document.getElementById('g-dev').value;
@@ -388,6 +412,36 @@ document.querySelectorAll('.del').forEach(function (btn) {
     uiConfirm('确定删除该卡密？', '删除卡密', function (yes) {
       if (yes) fetch('/admin/delete/' + btn.dataset.id, { method: 'POST' }).then(function () { location.reload(); });
     });  };
+});
+document.querySelectorAll('.ext').forEach(function (btn) {
+  btn.onclick = function () {
+    uiPrompt('给卡密 ' + (btn.dataset.code || '') + ' 续期。可同时填多种单位，例如 天填1、小时填12 表示加 1 天 12 小时；已激活的卡密会从当前到期时间往后加：', '卡密续期', '', function (txt) {
+      // 支持在输入框里直接写：1天12小时30分 / 2d / 90m 等
+      var s = (txt || '').trim();
+      if (!s) return;
+      var days = 0, hours = 0, minutes = 0;
+      var m;
+      if ((m = s.match(/(\d+)\s*(?:天|d|日)/i))) days = parseInt(m[1], 10);
+      if ((m = s.match(/(\d+)\s*(?:小?时|h|小时)/i))) hours = parseInt(m[1], 10);
+      if ((m = s.match(/(\d+)\s*(?:分(?:钟)?|m|min)/i))) minutes = parseInt(m[1], 10);
+      // 纯数字：默认按小时
+      if (!days && !hours && !minutes && /^\d+$/.test(s)) hours = parseInt(s, 10);
+      if (!days && !hours && !minutes) { uiAlert('没看懂要加多久，示例：1天12小时30分', '格式不对'); return; }
+      btn.disabled = true;
+      fetch('/admin/extend/' + btn.dataset.id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'days=' + days + '&hours=' + hours + '&minutes=' + minutes
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          btn.disabled = false;
+          if (d.ok) uiAlert(d.message, '续期成功', function () { location.reload(); });
+          else uiAlert(d.message || '续期失败', '续期失败');
+        })
+        .catch(function () { btn.disabled = false; uiAlert('网络错误，请重试', '请求失败'); });
+    });
+  };
 });
 document.querySelectorAll('.sitepanel').forEach(function (btn) {
   btn.onclick = function () {

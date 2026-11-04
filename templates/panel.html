@@ -49,7 +49,13 @@ th{background:#f8f9fe;font-size:12px;color:var(--sub);white-space:nowrap}
     <h2>生成卡密（自动绑定「{{ domain }}」）</h2>
     <div class="row">
       <label>数量 <input id="g-count" type="number" value="10" min="1" max="100"></label>
-      <label>有效天数 <input id="g-days" type="number" value="30" min="0"></label>
+      <label>有效期 <input id="g-days" type="number" value="30" min="0" style="width:80px">
+        <select id="g-unit">
+          <option value="day">天（0=永久）</option>
+          <option value="hour">小时</option>
+          <option value="minute">分钟</option>
+        </select>
+      </label>
       <label>备注 <input id="g-note" placeholder="选填" style="width:170px"></label>
       <button id="genBtn">生成</button>
     </div>
@@ -91,9 +97,16 @@ function load(){
 }
 document.getElementById('genBtn').onclick=function(){
   var b=this;b.disabled=true;
+  var v=parseInt(document.getElementById('g-days').value||'0',10);
+  if(isNaN(v)||v<0)v=0;
+  var u=document.getElementById('g-unit').value;
+  var days=0,hours=0,minutes=0;
+  if(u==='day'){days=v;}
+  if(u==='hour'){hours=v;}
+  if(u==='minute'){minutes=v;}
   post('/panel/api/generate','token='+encodeURIComponent(TOKEN)
     +'&count='+document.getElementById('g-count').value
-    +'&days='+document.getElementById('g-days').value
+    +'&days='+days+'&hours='+hours+'&minutes='+minutes
     +'&note='+encodeURIComponent(document.getElementById('g-note').value),function(d){
     b.disabled=false;
     var r=document.getElementById('res');

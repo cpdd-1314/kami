@@ -40,6 +40,7 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
 .tag-unused { background: #dcfce7; color: #15803d; }
 .tag-used { background: #dbeafe; color: #1d4ed8; }
 .tag-expired { background: #fee2e2; color: #b91c1c; }
+.ext { background: #e0e7ff; color: #4338ca; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 4px; }
 .del { background: #fee2e2; color: #b91c1c; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
 .empty { color: #8a8fa8; text-align: center; padding: 24px; }
 .panel code { background: #f1f2fb; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
@@ -114,7 +115,7 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
   .filter-row input { flex: 1 1 100%; max-width: none; }
   .filter-row button { flex: 1 1 100%; padding: 11px; }
   th, td { padding: 8px 8px; font-size: 12.5px; white-space: nowrap; }
-  .del, .sitelink, .delsite, .themebtn { padding: 6px 10px !important; font-size: 12px !important; }
+  .del, .ext, .sitelink, .delsite, .themebtn { padding: 6px 10px !important; font-size: 12px !important; }
 }
 
 /* ===== 网站设置：下拉选择 ===== */

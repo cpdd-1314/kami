@@ -56,6 +56,7 @@ def init_db():
         ("multi_device", "ALTER TABLE cards ADD COLUMN multi_device INTEGER NOT NULL DEFAULT 0"),
         ("max_devices", "ALTER TABLE cards ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 1"),
         ("devices", "ALTER TABLE cards ADD COLUMN devices TEXT"),
+        ("duration_min", "ALTER TABLE cards ADD COLUMN duration_min INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -98,13 +99,6 @@ def site_stats(domain: str) -> dict:
     return {"total": row[0], "unused": row[1], "used": row[2], "expired": row[3]}
 
 
-def site_by_token(token: str) -> str | None:
-    conn = get_conn()
-    row = conn.execute("SELECT domain FROM sites WHERE token=?", (token,)).fetchone()
-    conn.close()
-    return row["domain"] if row else None
-
-
 def hash_password(pwd: str) -> str:
     salt = secrets.token_hex(16)
     return salt + "$" + hashlib.sha256((salt + pwd).encode()).hexdigest()
@@ -130,25 +124,98 @@ def generate_code() -> str:
             return code
 
 
-def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None, max_devices: int = 1) -> list[str]:
+def create_cards(count: int, duration_days: int, note: str = "", site_domain: str | None = None, max_devices: int = 1, duration_min: int = 0) -> list[str]:
+    """生成卡密。duration_days=天；duration_min=额外的分钟数（小时/分钟卡用）"""
     conn = get_conn()
     codes = []
     now = datetime.now().isoformat(timespec="seconds")
     for _ in range(min(max(count, 1), 500)):
         code = generate_code()
         conn.execute(
-            "INSERT INTO cards (code, status, duration_days, created_at, site_domain, note, multi_device, max_devices) VALUES (?,?,?,?,?,?,?,?)",
-            (code, "unused", duration_days, now, site_domain, note, 1 if not max_devices else 0, max(0, int(max_devices))),
+            "INSERT INTO cards (code, status, duration_days, duration_min, created_at, site_domain, note, multi_device, max_devices) VALUES (?,?,?,?,?,?,?,?,?)",
+            (code, "unused", duration_days, max(0, int(duration_min or 0)), now, site_domain, note,
+             1 if not max_devices else 0, max(0, int(max_devices))),
         )
         codes.append(code)
     conn.commit()
     conn.close()
-    return codes
-
     try:
         import backup; backup.mark_dirty()
     except Exception:
         pass
+    return codes
+
+
+def card_duration_min(row) -> int:
+    """卡密总有效分钟数（0 = 永久）"""
+    days = row["duration_days"] if "duration_days" in row.keys() else 0
+    mins = row["duration_min"] if "duration_min" in row.keys() else 0
+    return int(days or 0) * 1440 + int(mins or 0)
+
+
+def duration_text(days: int, mins: int = 0) -> str:
+    """有效期的人类可读文案"""
+    total = int(days or 0) * 1440 + int(mins or 0)
+    if total <= 0:
+        return "永久"
+    d, rest = divmod(total, 1440)
+    h, m = divmod(rest, 60)
+    parts = []
+    if d:
+        parts.append(f"{d} 天")
+    if h:
+        parts.append(f"{h} 小时")
+    if m:
+        parts.append(f"{m} 分钟")
+    return "".join(parts)
+
+
+def extend_card(card_id: int, days: int = 0, hours: int = 0, minutes: int = 0):
+    """给卡密续期/延长时间。返回 (ok, message)
+
+    - 未使用卡密：直接累加有效期
+    - 已使用且有到期时间：到期时间往后加
+    - 永久卡密：已经是永久，无需续期
+    """
+    total = int(days or 0) * 1440 + int(hours or 0) * 60 + int(minutes or 0)
+    if total <= 0:
+        return False, "请填写要延长的时间"
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM cards WHERE id=?", (card_id,)).fetchone()
+    if not row:
+        conn.close()
+        return False, "卡密不存在"
+    if row["status"] == "unused":
+        if card_duration_min(row) <= 0:
+            conn.close()
+            return False, "该卡密是永久卡，无需续期"
+        mins = int(row["duration_min"] or 0) + total
+        conn.execute("UPDATE cards SET duration_min=? WHERE id=?", (mins, card_id))
+        conn.commit()
+        conn.close()
+        try:
+            import backup; backup.mark_dirty()
+        except Exception:
+            pass
+        return True, f"已延长 {duration_text(0, total)}，现在有效期：{duration_text(row['duration_days'], mins)}"
+    # 已使用
+    exp = row["expire_at"]
+    if not exp:
+        conn.close()
+        return False, "该卡密已激活为永久有效，无需续期"
+    try:
+        new_exp = datetime.fromisoformat(exp) + timedelta(minutes=total)
+    except ValueError:
+        conn.close()
+        return False, "卡密到期时间异常，无法续期"
+    conn.execute("UPDATE cards SET expire_at=? WHERE id=?", (new_exp.isoformat(timespec="seconds"), card_id))
+    conn.commit()
+    conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
+    return True, f"已延长 {duration_text(0, total)}，新到期时间：{new_exp.strftime('%Y-%m-%d %H:%M')}"
 
 def _fp(device: str) -> str:
     """取设备标识中的硬件指纹部分"""
@@ -283,10 +350,11 @@ def verify_card(code: str, user: str = "", domain: str | None = None, device: st
         if exp:
             return True, "卡密有效", exp, "ok"
         return True, "永久有效", None, "ok"
-    # 激活
+    # 激活（有效期 = 天 + 小时/分钟，统一按分钟算）
+    total_min = card_duration_min(row)
     expire_at = (
-        (now + timedelta(days=row["duration_days"])).isoformat(timespec="seconds")
-        if row["duration_days"] > 0
+        (now + timedelta(minutes=total_min)).isoformat(timespec="seconds")
+        if total_min > 0
         else None
     )
     # 绑定设备到设备池（受 max_devices 限制）
@@ -327,7 +395,9 @@ def list_cards(status: str | None = None, q: str | None = None, domain: str | No
     if status in ("unused", "used"):
         sql += " AND status=?"
         params.append(status)
-    if domain:
+    if domain == "__none__":
+        sql += " AND (site_domain IS NULL OR site_domain='')"
+    elif domain:
         sql += " AND site_domain=?"
         params.append(domain)
     if q:
