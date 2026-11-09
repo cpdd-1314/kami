@@ -87,7 +87,14 @@ def fmt_time(s: str | None) -> str:
 
 
 def card_view(r: dict) -> dict:
-    st = "已过期" if r["is_expired"] else ("已使用" if r["status"] == "used" else "未使用")
+    if r.get("is_disabled"):
+        st = "已停用"
+    elif r["is_expired"]:
+        st = "已过期"
+    elif r["status"] == "used":
+        st = "已使用"
+    else:
+        st = "未使用"
     expire_at = r["expire_at"]
     remain = ""
     if r["status"] == "used" and expire_at:
@@ -486,6 +493,15 @@ async def extend(card_id: int, kami_session: str | None = Cookie(None),
     if not require_auth(kami_session):
         return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
     ok, msg = db.extend_card(card_id, days, hours, minutes)
+    return {"ok": ok, "message": msg}
+
+
+@app.post("/admin/toggle/{card_id}")
+async def toggle_card(card_id: int, kami_session: str | None = Cookie(None), disabled: int = Form(1)):
+    """停用 / 启用卡密：客户端下次心跳（默认 5 秒）即锁屏"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    ok, msg = db.set_disabled(card_id, bool(disabled))
     return {"ok": ok, "message": msg}
 
 

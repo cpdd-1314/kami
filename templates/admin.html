@@ -146,7 +146,7 @@
             <div class="code">{{ c.code }}</div>
             {% if c.note %}<div class="sub" title="{{ c.note }}">{{ c.note }}</div>{% endif %}
           </td>
-          <td class="col-tight"><span class="tag {{ 'tag-expired' if c.is_expired else ('tag-used' if c.status=='used' else 'tag-unused') }}">{{ c.status_text }}</span></td>
+          <td class="col-tight"><span class="tag {{ 'tag-disabled' if c.is_disabled else ('tag-expired' if c.is_expired else ('tag-used' if c.status=='used' else 'tag-unused')) }}">{{ c.status_text }}</span></td>
           <td class="col-tight">{{ c.duration_text }}</td>
           <td class="col-tight">
             <div>{{ c.expire_text or '—' }}</div>
@@ -159,6 +159,7 @@
           <td class="site-cell" title="{{ c.site_domain or '' }}">{{ c.site_domain or '全网通用' }}</td>
           <td>
             <button class="ext" data-id="{{ c.id }}" data-code="{{ c.code }}">续期</button>
+            <button class="tgl {{ 'on' if c.is_disabled else '' }}" data-id="{{ c.id }}" data-disabled="{{ 1 if c.is_disabled else 0 }}">{{ '启用' if c.is_disabled else '停用' }}</button>
             <button class="del" data-id="{{ c.id }}">删除</button>
           </td>
         </tr>
@@ -486,6 +487,18 @@ document.getElementById('g-btn').onclick = function () {
     })
     .catch(function () { uiAlert('网络错误，请重试', '请求失败'); b.disabled = false; });
 };
+document.querySelectorAll('.tgl').forEach(function (btn) {
+  btn.onclick = function () {
+    var now = btn.dataset.disabled === '1';
+    var next = now ? 0 : 1;
+    var tip = now ? '确定启用该卡密？' : '停用后，使用该卡密的网站/软件会在 5 秒内锁屏。确定停用？';
+    uiConfirm ? uiConfirm(tip, function () {
+      fetch('/admin/toggle/' + btn.dataset.id, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'disabled=' + next })
+        .then(function (r) { return r.json(); })
+        .then(function (d) { if (d.ok) location.reload(); else alert(d.message); });
+    }) : (confirm(tip) && fetch('/admin/toggle/' + btn.dataset.id, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'disabled=' + next }).then(function(){ location.reload(); }));
+  };
+});
 document.querySelectorAll('.del').forEach(function (btn) {
   btn.onclick = function () {
     uiConfirm('确定删除该卡密？', '删除卡密', function (yes) {

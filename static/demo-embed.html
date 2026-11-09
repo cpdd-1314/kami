@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="UTF-8"><title>第三方网站测试页</title>
+<style>body{font-family:system-ui,sans-serif;padding:40px;background:#f7f7fb;color:#222}
+h1{font-size:22px}.card{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 4px 14px rgba(0,0,0,.06)}</style></head>
+<body>
+<h1>这是一个「外部网站」示例页</h1>
+<div class="card">这里是受保护的内容 A：只有卡密有效才能看到。</div>
+<div class="card">这里是受保护的内容 B。</div>
+<div class="card">这里是受保护的内容 C。</div>
+<script src="/embed.js?site=test-site.local"></script>
+<script>
+window.KAMI_HEARTBEAT_MS = 5000;
+window.KAMI_ON_LOCK = function (info) {
+  console.log('[宿主] 收到锁定指令', info);
+  document.title = '🔒 已锁定 - ' + (info.reason || '');
+};
+</script>
+</body></html>

@@ -42,6 +42,44 @@ curl -X POST http://localhost:8000/admin/generate_custom \
 
 返回 `{"ok": true, "created": [...], "skipped": [...]}`，`skipped` 为已存在被跳过的卡密。
 
+
+## 心跳校验与自动锁屏（5 秒）
+
+解锁后，客户端每 **5 秒**向服务端复核一次卡密（`POST /api/check`）。一旦失效（到期 / 后台停用 / 换设备 / 被删除），**立即全屏锁屏并中断功能**，页面上的「重新验证」按钮可让用户重新输入卡密。
+
+**防误锁**：网络异常不会立刻锁屏，连续失败 5 次（约 25 秒）才判定为「无法验证」并锁定；页面切回前台时会立刻补一次校验，防止挂机绕过。
+
+### 宿主页面可配置项
+
+```html
+<script>
+  window.KAMI_HEARTBEAT_MS = 5000;   // 心跳间隔，默认 5000（最小 1000）
+  window.KAMI_LOCK_ACTION = 'screen'; // 'screen' 直接锁屏（默认）｜'function' 只回调，业务自己锁功能
+  window.KAMI_ON_LOCK = function (info) {
+    // info = { code, reason, message }
+    // reason: expired | disabled | invalid | limit | device | net
+    myApp.lockFeatures();            // 例如：屏蔽播放器、隐藏数据、跳转付费页
+  };
+  window.KAMI_ON_UNLOCK = function (info) { myApp.unlockFeatures(); };
+</script>
+```
+
+也可用 DOM 事件监听（适配任意框架）：
+
+```js
+document.addEventListener('kami:lock',   e => lockUI(e.detail));
+document.addEventListener('kami:unlock', e => unlockUI(e.detail));
+```
+
+### 后台远程“一键锁”
+
+后台卡密列表每行的 **停用** 按钮：点一下，持有该卡密的网站 / App 会在 5 秒内自动锁屏；再点 **启用** 即恢复。适用于退款、盗版、欠费等场景。
+
+### 演示
+
+- 第三方网站接入演示：`/static/demo-embed.html`（含锁屏回调示例）
+- 接入代码示例（Android / iOS / Flutter / RN / C# / Python 等）已在后台「接入其他软件」中同步为 5 秒心跳
+
 ## 在其他网站使用
 
 ```html

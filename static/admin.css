@@ -108,13 +108,13 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
 .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .table-scroll table { table-layout: fixed; min-width: 720px; }
 .table-scroll th, .table-scroll td { overflow: hidden; text-overflow: ellipsis; }
-.table-scroll th:nth-child(1), .table-scroll td:nth-child(1) { width: 24%; }
-.table-scroll th:nth-child(2), .table-scroll td:nth-child(2) { width: 11%; }
+.table-scroll th:nth-child(1), .table-scroll td:nth-child(1) { width: 21%; }
+.table-scroll th:nth-child(2), .table-scroll td:nth-child(2) { width: 10%; }
 .table-scroll th:nth-child(3), .table-scroll td:nth-child(3) { width: 8%; }
-.table-scroll th:nth-child(4), .table-scroll td:nth-child(4) { width: 18%; }
-.table-scroll th:nth-child(5), .table-scroll td:nth-child(5) { width: 14%; }
+.table-scroll th:nth-child(4), .table-scroll td:nth-child(4) { width: 17%; }
+.table-scroll th:nth-child(5), .table-scroll td:nth-child(5) { width: 13%; }
 .table-scroll th:nth-child(6), .table-scroll td:nth-child(6) { width: 10%; }
-.table-scroll th:nth-child(7), .table-scroll td:nth-child(7) { width: 15%; min-width: 120px; }
+.table-scroll th:nth-child(7), .table-scroll td:nth-child(7) { width: 21%; min-width: 178px; }
 
 /* ===== 页面切换：左侧功能按钮 ===== */
 .drawer a.active { background: #eef2ff; color: #2563eb; font-weight: 600; }
@@ -370,3 +370,8 @@ td.ops a { text-decoration: none; }
 
 /* 设备限制下拉文案较长，单独加宽避免省略 */
 #g-dev, #c-dev { min-width: 186px; }
+
+/* 已停用徽标与停用按钮 */
+.tag-disabled { background: #eef0f6; color: #6b7280; }
+.tgl { background: #fef3c7; color: #b45309; border: none; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; white-space: nowrap; margin-right: 4px; }
+.tgl.on { background: #dcfce7; color: #15803d; }

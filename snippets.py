@@ -2,7 +2,7 @@
 
 要点：
 - 每个技术栈都带「稳定设备号」，重启/关闭软件不会变，设备限制才能正常工作
-- 首次激活 verify → 存卡密 → 后续启动 check 复核 → 每 5 分钟自动复核
+- 首次激活 verify → 存卡密 → 后续启动 check 复核 → 每 5 秒自动复核
 - 代码里的接口地址和 App 标识已自动填好，复制即可用
 """
 
@@ -193,8 +193,8 @@ object Kami {
 
     private var guardTimer: java.util.Timer? = null
 
-    /** 每 5 分钟复核，失效清卡密并锁回去 */
-    fun startGuard(onLock: () -> Unit, intervalMs: Long = 5 * 60 * 1000L) {
+    /** 每 5 秒复核，失效清卡密并锁回去 */
+    fun startGuard(onLock: () -> Unit, intervalMs: Long = 5 * 1000L) {
         guardTimer?.cancel()
         guardTimer = java.util.Timer().apply {
             scheduleAtFixedRate(object : java.util.TimerTask() {
@@ -348,7 +348,7 @@ public class Kami {
 
     private static java.util.concurrent.ScheduledExecutorService guard;
 
-    /** 每 5 分钟复核，失效锁回 */
+    /** 每 5 秒复核，失效锁回 */
     public static void startGuard(final Done onLock) {
         stopGuard();
         guard = java.util.concurrent.Executors.newSingleThreadScheduledExecutor();
@@ -482,9 +482,9 @@ class Kami {
     return null;
   }
 
-  /// 每 5 分钟复核；失效立即清卡密并回调 onLock
+  /// 每 5 秒复核；失效立即清卡密并回调 onLock
   static void startGuard(void Function()? onLock,
-      {Duration interval = const Duration(minutes: 5)}) {
+      {Duration interval = const Duration(seconds: 5)}) {
     _guard?.cancel();
     _guard = Timer.periodic(interval, (_) async {
       final code = await savedCode();
@@ -587,8 +587,8 @@ export async function check(code) {
 
 let _timer = null;
 
-/** 每 5 分钟复核，失效清卡密并回调 */
-export function startGuard(onLock, intervalMs = 5 * 60 * 1000) {
+/** 每 5 秒复核，失效清卡密并回调 */
+export function startGuard(onLock, intervalMs = 5 * 1000) {
   stopGuard();
   _timer = setInterval(async () => {
     const code = await savedCode();
@@ -727,10 +727,10 @@ final class Kami {
 
     private static var timer: Timer?
 
-    /// 每 5 分钟复核，失效清卡密并回调
+    /// 每 5 秒复核，失效清卡密并回调
     static func startGuard(onLock: @escaping () -> Void) {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 5 * 60, repeats: true) { _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { _ in
             guard let code = savedCode else { timer?.invalidate(); return }
             check(code) { r in
                 if !r.ok {
@@ -877,13 +877,13 @@ if (btnEl) {
   else { localStorage.removeItem('kami_code'); showInput(r.message); }
 })();
 
-// ——— 每 5 分钟自动复核 ———
+// ——— 每 5 秒自动复核 ———
 setInterval(async function () {
   const code = localStorage.getItem('kami_code');
   if (!code) return;
   const r = await kamiCheck(code);
   if (!r.ok) { localStorage.removeItem('kami_code'); showInput(r.message); }
-}, 5 * 60 * 1000);
+}, 5 * 1000);
 """
 
     # ================= Windows C# =================
@@ -1038,7 +1038,7 @@ namespace YourApp
             return r;
         }
 
-        /// <summary>每 5 分钟复核，失效回调（在后台线程，记得切回 UI 线程）</summary>
+        /// <summary>每 5 秒复核，失效回调（在后台线程，记得切回 UI 线程）</summary>
         public static async void StartGuard(Action<string> onLock)
         {
             while (true)
@@ -1193,8 +1193,8 @@ def gate(on_lock=None) -> bool:
     return True
 
 
-def start_guard(on_lock=None, interval: int = 300) -> None:
-    \"\"\"每 5 分钟复核；失效清卡密并回调 on_lock(提示文字)\"\"\"
+def start_guard(on_lock=None, interval: int = 5) -> None:
+    \"\"\"每 5 秒复核；失效清卡密并回调 on_lock(提示文字)\"\"\"
     def loop():
         while True:
             time.sleep(interval)
@@ -1353,7 +1353,7 @@ func main() {
         fmt.Println("已解锁，到期：", r["expire_text"])
     }
 
-    // 每 5 分钟后台复核
+    // 每 5 秒后台复核
     go func() {
         for {
             time.Sleep(5 * time.Minute)

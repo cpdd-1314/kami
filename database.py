@@ -57,6 +57,7 @@ def init_db():
         ("max_devices", "ALTER TABLE cards ADD COLUMN max_devices INTEGER NOT NULL DEFAULT 1"),
         ("devices", "ALTER TABLE cards ADD COLUMN devices TEXT"),
         ("duration_min", "ALTER TABLE cards ADD COLUMN duration_min INTEGER NOT NULL DEFAULT 0"),
+        ("disabled", "ALTER TABLE cards ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0"),
     ):
         try:
             conn.execute(ddl)
@@ -266,6 +267,29 @@ def _dev_list(row) -> list[str]:
     return lst
 
 
+def _is_disabled(row) -> bool:
+    try:
+        return bool(row["disabled"])
+    except (IndexError, KeyError):
+        return False
+
+
+def set_disabled(card_id: int, disabled: bool):
+    """停用 / 启用卡密（停用后下次心跳校验立即失败 → 客户端锁屏）"""
+    conn = get_conn()
+    if not conn.execute("SELECT id FROM cards WHERE id=?", (card_id,)).fetchone():
+        conn.close()
+        return False, "卡密不存在"
+    conn.execute("UPDATE cards SET disabled=? WHERE id=?", (1 if disabled else 0, card_id))
+    conn.commit()
+    conn.close()
+    try:
+        import backup; backup.mark_dirty()
+    except Exception:
+        pass
+    return True, "已停用" if disabled else "已启用"
+
+
 def _device_ok(row, device: str):
     """设备限制校验（仅用于「复核」，不新增设备）。返回 None 通过，否则错误元组
 
@@ -300,16 +324,19 @@ def _device_ok(row, device: str):
 
 def check_card(code: str, domain: str | None = None, device: str = ""):
     """回访校验（不激活、不扣次数）。返回 (ok, message, expire_at, key)"""
-    code = (code or "").strip().upper()
+    code = (code or "").strip()
     conn = get_conn()
     try:
-        row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
+        row = conn.execute("SELECT * FROM cards WHERE code = ? COLLATE NOCASE", (code,)).fetchone()
     except Exception:
         conn.close()
         raise
     if not row:
         conn.close()
         return False, "卡密无效", None, "invalid"
+    if _is_disabled(row):
+        conn.close()
+        return False, "卡密已被停用", None, "disabled"
     if row["site_domain"] and domain and row["site_domain"] != domain:
         conn.close()
         return False, f"该卡密仅限 {row['site_domain']} 使用", None, "limit"
@@ -350,6 +377,9 @@ def verify_card(code: str, user: str = "", domain: str | None = None, device: st
     if not row:
         conn.close()
         return False, "卡密无效", None, "invalid"
+    if _is_disabled(row):
+        conn.close()
+        return False, "卡密已被停用", None, "disabled"
     # 站点绑定检查
     if row["site_domain"] and domain and row["site_domain"] != domain:
         conn.close()
@@ -443,6 +473,7 @@ def list_cards(status: str | None = None, q: str | None = None, domain: str | No
     # 动态过期
     now = datetime.now()
     for r in rows:
+        r["is_disabled"] = bool(r.get("disabled") or 0)
         r["is_expired"] = bool(
             r["expire_at"] and r["status"] == "used"
             and _expired(r["expire_at"], now)

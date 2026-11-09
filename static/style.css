@@ -108,3 +108,22 @@ header p { color: rgba(255,255,255,.85); text-align: center; margin: 10px 0 40px
   .modal button { font-size: 15px; letter-spacing: 3px; }
   .kami-toast { font-size: 13.5px; padding: 10px 16px; white-space: normal; text-align: center; }
 }
+
+/* ===== 心跳失效后的全屏锁屏 ===== */
+#kami-locked {
+  position: fixed; inset: 0; z-index: 2147483647;
+  background: #0d1024; color: #fff;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+;}
+#kami-locked .locked-box { animation: kamiBoxIn .22s ease; }
+@keyframes kamiBoxIn { from { transform: translateY(8px); } to { transform: none; } }
+#kami-locked .locked-box { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 360px; text-align: center; }
+#kami-locked .locked-icon { font-size: 54px; line-height: 1; }
+#kami-locked .locked-title { font-size: 23px; font-weight: 700; }
+#kami-locked .locked-sub { font-size: 13px; color: #9aa0b8; }
+#kami-locked .locked-tip { font-size: 14px; color: #e5e7f5; line-height: 1.7; }
+#kami-locked .locked-btn {
+  margin-top: 8px; padding: 11px 26px; border: none; border-radius: 10px; cursor: pointer;
+  background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff; font-size: 15px; font-weight: 600;
+}

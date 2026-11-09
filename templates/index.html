@@ -39,8 +39,8 @@
 
   /* ====== 文案（含义全局统一，语言随网站/浏览器自动检测）====== */
   var I18N = {
-    zh: {title:"请输入卡密",sub:"验证通过后即可查看本页内容",btn:"验 证",verifying:"验证中...",empty:"请输入卡密",invalid:"卡密无效",expired:"卡密已过期",notyet:"卡密未激活",limit:"该卡密仅限 {d} 使用",rate:"操作过于频繁，请稍后再试",net:"网络错误，请重试",ok:"卡密有效",until:"有效期至 ",forever:"永久有效"},
-    en: {title:"Enter your license key",sub:"Enter a valid key to view this page",btn:"VERIFY",verifying:"Checking...",empty:"Please enter your key",invalid:"Invalid key",expired:"Key expired",notyet:"Key not activated",limit:"This key is restricted to {d}",rate:"Too many attempts, please try later",net:"Network error, please retry",ok:"Key valid",until:"Valid until ",forever:"Lifetime access"},
+    zh: {title:"请输入卡密",sub:"验证通过后即可查看本页内容",btn:"验 证",verifying:"验证中...",empty:"请输入卡密",invalid:"卡密无效",expired:"卡密已过期",notyet:"卡密未激活",limit:"该卡密仅限 {d} 使用",rate:"操作过于频繁，请稍后再试",net:"网络错误，请重试",ok:"卡密有效",until:"有效期至 ",forever:"永久有效",disabled:"卡密已被停用",locked:"已锁定",lockedSub:"卡密已失效或已被停用，页面已锁定",relock:"重新验证",netfail:"无法连接验证服务器，已锁定"},
+    en: {title:"Enter your license key",sub:"Enter a valid key to view this page",btn:"VERIFY",verifying:"Checking...",empty:"Please enter your key",invalid:"Invalid key",expired:"Key expired",notyet:"Key not activated",limit:"This key is restricted to {d}",rate:"Too many attempts, please try later",net:"Network error, please retry",ok:"Key valid",until:"Valid until ",forever:"Lifetime access",disabled:"Key disabled by admin",locked:"Locked",lockedSub:"Your key is invalid or disabled. The page has been locked.",relock:"Verify again",netfail:"Cannot reach the license server. Locked"},
     ja: {title:"ライセンスキーを入力",sub:"有効なキーを入力すると表示されます",btn:"認 証",verifying:"確認中...",empty:"キーを入力してください",invalid:"無効なキーです",expired:"キーの期限が切れました",notyet:"キーが未アクティベートです",limit:"このキーは {d} 専用です",rate:"試行回数が多すぎます。しばらくしてから再試行してください",net:"ネットワークエラー、再試行してください",ok:"キー有効",until:"有効期限 ",forever:"無期限"},
     ko: {title:"라이선스 키 입력",sub:"유효한 키를 입력하면 내용을 볼 수 있습니다",btn:"확인",verifying:"확인 중...",empty:"키를 입력해주세요",invalid:"유효하지 않은 키",expired:"키가 만료되었습니다",notyet:"키가 활성화되지 않았습니다",limit:"이 키는 {d} 전용입니다",rate:"시도가 너무 많습니다. 잠시 후 다시 시도하세요",net:"네트워크 오류, 다시 시도해주세요",ok:"키 유효",until:"유효기간 ",forever:"평생 유효"},
     es: {title:"Introduce tu clave",sub:"Introduce una clave válida para ver esta página",btn:"VERIFICAR",verifying:"Verificando...",empty:"Introduce tu clave",invalid:"Clave inválida",expired:"Clave caducada",notyet:"Clave no activada",limit:"Esta clave solo sirve para {d}",rate:"Demasiados intentos, inténtalo más tarde",net:"Error de red, reintenta",ok:"Clave válida",until:"Válida hasta ",forever:"Acceso de por vida"},
@@ -80,6 +80,7 @@
     if (m.indexOf('频繁') >= 0) return 'rate';
     if (m.indexOf('过期') >= 0 || m.indexOf('已使用') >= 0) return 'expired';
     if (m.indexOf('未激活') >= 0) return 'notyet';
+  if (m.indexOf('停用') >= 0) return 'disabled';
     if (m.indexOf('仅限') >= 0) return 'limit';
     if (m.indexOf('无效') >= 0 || m.indexOf('不存在') >= 0) return 'invalid';
     return '';
@@ -150,11 +151,47 @@
     document.body.classList.remove('mode-blur', 'mode-dim', 'mode-lock');
     setTimeout(function () { overlay.style.display = 'none'; }, 220);
   }
-  function relock(tip) {
-    /* 5 分钟复核发现失效：清掉本地卡密，重新上锁 */
-    try { localStorage.removeItem(KC); } catch (e) {}
+  /* ===== 心跳锁屏：卡密失效立即全屏锁定并回调业务层 ===== */
+  var HEARTBEAT_MS = (function () {
+    var v = parseInt(window.KAMI_HEARTBEAT_MS, 10);
+    return (v && v >= 1000) ? v : 5000;
+  })();
+  var LOCK_ACTION = window.KAMI_LOCK_ACTION || 'screen';
+  var FAIL_TOLERANCE = 5, failCount = 0;
+
+  function fireLock(code, reason, message) {
+    var info = { code: code, reason: reason || 'invalid', message: message || '' };
+    try { document.dispatchEvent(new CustomEvent('kami:lock', { detail: info })); } catch (e) {}
+    try { if (typeof window.KAMI_ON_LOCK === 'function') window.KAMI_ON_LOCK(info); } catch (e) {}
+  }
+  function lockScreen(tip, reason, code) {
+    fireLock(code, reason, tip);
+    if (LOCK_ACTION === 'function') return;
+    var old = document.getElementById('kami-locked');
+    if (old) old.remove();
+    var d = document.createElement('div');
+    d.id = 'kami-locked';
+    d.innerHTML = '<div class="locked-box">'
+      + '<div class="locked-icon">\uD83D\uDD12</div>'
+      + '<div class="locked-title">' + tr('locked') + '</div>'
+      + '<div class="locked-sub">' + tr('lockedSub') + '</div>'
+      + '<div class="locked-tip">' + (tip || '') + '</div>'
+      + '<button class="locked-btn">' + tr('relock') + '</button></div>';
+    document.body.appendChild(d);
+    d.querySelector('.locked-btn').onclick = function () {
+      d.remove();
+      try { localStorage.removeItem(KC); } catch (e) {}
+      saved = null;
+      showOverlay(tip);
+    };
+  }
+  function relock(tip, reason) {
+    /* 心跳发现失效：清掉本地卡密 → 立即锁屏（锁屏上可点「重新验证」） */
+    var code = null;
+    try { code = localStorage.getItem(KC); localStorage.removeItem(KC); } catch (e) {}
     saved = null;
-    showOverlay(tip);
+    failCount = 0;
+    lockScreen(tip, reason || 'invalid', code);
   }
   function showOverlay(tip) {
     overlay.style.display = 'flex';
@@ -193,28 +230,39 @@
   try { saved = localStorage.getItem(KC); } catch (e) {}
   if (saved) {
     call('check', saved, function (d) {
-      if (d.ok) { unlock(); toast('✓ ' + tr('ok') + ' · ' + fmtExp(d.expire_at)); }
-      else relock(msgText(d.key || msgKey(d.message), d.message));
+      if (d.ok) {
+        unlock();
+        toast('✓ ' + tr('ok') + ' · ' + fmtExp(d.expire_at));
+        try { if (typeof window.KAMI_ON_UNLOCK === 'function') window.KAMI_ON_UNLOCK({ code: saved, expire_at: d.expire_at }); } catch (e) {}
+      } else if (d.key === 'net') {
+        showOverlay(tr('net'));
+      } else {
+        relock(msgText(d.key || msgKey(d.message), d.message), d.key);
+      }
     });
   }
 
-  // ===== 每 5 分钟自动复核：中途失效立即重新上锁 =====
+  // ===== 每 5 秒心跳校验：中途失效（过期 / 停用 / 换设备）立即锁屏 =====
   (function startGuard() {
-    var CHECK_INTERVAL = 5 * 60 * 1000, checking = false;
+    var checking = false;
     function guardCheck() {
       if (checking) return;
+      if (document.getElementById('kami-locked')) return;   // 已锁定，等用户重新验证
       var code = null;
       try { code = localStorage.getItem(KC); } catch (e) {}
       if (!code) return;
       checking = true;
       call('check', code, function (d) {
         checking = false;
-        if (d.ok) return;  // 依然有效，静默通过
-        var open = overlay.style.display !== 'none' && !overlay.classList.contains('hide');
-        if (!open) relock(msgText(d.key || msgKey(d.message), d.message));
+        if (d.ok) { failCount = 0; return; }   // 依然有效，静默通过
+        if (d.key === 'net') {
+          if (++failCount >= FAIL_TOLERANCE) relock(tr('netfail'), 'net');
+          return;
+        }
+        relock(msgText(d.key || msgKey(d.message), d.message), d.key);
       });
     }
-    setInterval(guardCheck, CHECK_INTERVAL);
+    setInterval(guardCheck, HEARTBEAT_MS);
     document.addEventListener('visibilitychange', function () {
       if (document.visibilityState === 'visible') guardCheck();
     });

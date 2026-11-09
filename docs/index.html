@@ -122,6 +122,52 @@ header p { color: rgba(255,255,255,.85); text-align: center; margin: 10px 0 40px
   };
   document.getElementById('verify-btn').onkeydown = null;
   input.onkeydown = function (e) { if (e.key === 'Enter') btn.onclick(); };
+
+  /* ===== 每 5 秒本地心跳：到期立即锁屏（静态版无后端，按本地计时判断） ===== */
+  var HEARTBEAT_MS = (function () {
+    var v = parseInt(window.KAMI_HEARTBEAT_MS, 10);
+    return (v && v >= 1000) ? v : 5000;
+  })();
+  var LOCK_ACTION = window.KAMI_LOCK_ACTION || 'screen';
+
+  function lockScreen(tip) {
+    var old = document.getElementById('kami-locked');
+    if (old) old.remove();
+    var d = document.createElement('div');
+    d.id = 'kami-locked';
+    d.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:#0d1024;color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font-family:system-ui,-apple-system,sans-serif;';
+    d.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;max-width:360px;text-align:center;">'
+      + '<div style="font-size:54px;">\uD83D\uDD12</div>'
+      + '<div style="font-size:23px;font-weight:700;">已锁定</div>'
+      + '<div style="font-size:13px;color:#9aa0b8;">卡密已失效，页面已锁定</div>'
+      + '<div style="font-size:14px;color:#e5e7f5;">' + (tip || '') + '</div>'
+      + '<button id="kami-relock" style="margin-top:8px;padding:11px 26px;border:none;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);color:#fff;font-size:15px;font-weight:600;cursor:pointer;">重新验证</button></div>';
+    document.body.appendChild(d);
+    document.getElementById('kami-relock').onclick = function () {
+      d.remove();
+      try { localStorage.removeItem(KEY); } catch (e) {}
+      overlay.style.display = 'flex';
+      content.classList.add('blurred');
+      msg.textContent = '';
+      input.value = '';
+      input.focus();
+    };
+  }
+
+  setInterval(function () {
+    var until = 0;
+    try { until = parseInt(localStorage.getItem(KEY) || '0', 10); } catch (e) {}
+    if (!until) return;                       // 未解锁
+    if (document.getElementById('kami-locked')) return;
+    if (until === 1) return;                  // 永久卡
+    if (until > Date.now()) return;           // 仍在有效期内
+    try { localStorage.removeItem(KEY); } catch (e) {}
+    if (LOCK_ACTION === 'function') {
+      try { if (typeof window.KAMI_ON_LOCK === 'function') window.KAMI_ON_LOCK({ reason: 'expired' }); } catch (e) {}
+      return;
+    }
+    lockScreen('有效期已结束，请输入新的卡密');
+  }, HEARTBEAT_MS);
   input.oninput = function () { input.style.borderColor = '#dcdff0'; msg.textContent = ''; };
 })();
 </script>
