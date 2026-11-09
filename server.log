@@ -1,4 +1,13 @@
-INFO:     Started server process [401079]
+INFO:     Started server process [25018]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
+[backup] 未配置 GITHUB_TOKEN / KAMI_BACKUP_REPO，自动备份未启用
+INFO:     127.0.0.1:58644 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58646 - "POST /admin/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58648 - "POST /admin/generate_custom HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46420 - "POST /admin/generate_custom HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46422 - "POST /api/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46438 - "POST /api/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46446 - "POST /api/verify HTTP/1.1" 200 OK
+INFO:     127.0.0.1:46462 - "GET /admin/dashboard HTTP/1.1" 200 OK

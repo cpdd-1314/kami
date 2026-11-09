@@ -22,6 +22,7 @@
   <div class="drawer-head">功能菜单</div>
   <a href="#sec-stats" data-jump="sec-stats"><i>📊</i>数据概览</a>
   <a href="#sec-generate" data-jump="sec-generate"><i>🎫</i>批量生成卡密</a>
+  <a href="#sec-custom" data-jump="sec-custom"><i>✍️</i>自定义卡密</a>
   <a href="#sec-cards" data-jump="sec-cards"><i>📋</i>卡密列表</a>
   <a href="#sec-sites" data-jump="sec-sites"><i>🌐</i>接入的网站</a>
   <a href="#sec-other" data-jump="sec-other"><i>🧩</i>接入其他软件</a>
@@ -76,6 +77,40 @@
     <p class="hint" style="margin:10px 0 0;">还没有接入任何网站，绑定网站只能选「全网通用」。
       先到 <a href="#" onclick="showPage('sec-sites');setTimeout(function(){document.getElementById('add-site-btn').click();},0);return false;">接入的网站 → + 添加网站</a> 添加后再来生成。</p>
     {% endif %}
+  </div>
+
+  <div class="panel" id="sec-custom">
+    <h3>自定义卡密（自己指定内容）</h3>
+    <p class="hint">想用什么卡密就填什么，如 <code>123456</code>、<code>1a2a</code>、<code>iuahduh</code>；多个用换行、空格或逗号分隔（单次最多 500 个）。验证时不区分大小写，重复的会自动跳过。</p>
+    <textarea id="c-codes" rows="4" placeholder="123456&#10;1a2a&#10;iuahduh"></textarea>
+    <div class="gen-row" style="margin-top:12px;">
+      <label>有效期 <input id="c-days" type="number" value="0" min="0">
+        <select id="c-unit">
+          <option value="day">天（0=永久）</option>
+          <option value="hour">小时</option>
+          <option value="minute">分钟</option>
+        </select>
+      </label>
+      <label>绑定网站
+        <select id="c-site" {% if not sites %}disabled{% endif %}>
+          <option value="">全网通用</option>
+          {% for s in sites %}
+          <option value="{{ s.domain }}">{{ s.domain }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>备注 <input id="c-note" placeholder="选填"></label>
+      <label>设备限制
+        <select id="c-dev">
+          <option value="1">仅限 1 台设备（默认）</option>
+          <option value="2">最多 2 台设备</option>
+          <option value="3">最多 3 台设备</option>
+          <option value="0">不限设备</option>
+        </select>
+      </label>
+      <button id="c-btn">创建卡密</button>
+    </div>
+    <pre id="c-result" hidden></pre>
   </div>
 
   <div class="panel" id="sec-cards">
@@ -325,7 +360,7 @@
     };
   });
   // ===== 页面切换：一次只显示一个页面 =====
-  var PAGES = ['sec-stats', 'sec-generate', 'sec-cards', 'sec-sites', 'sec-other'];
+  var PAGES = ['sec-stats', 'sec-generate', 'sec-custom', 'sec-cards', 'sec-sites', 'sec-other'];
   window.showPage = function (id) {
     if (id === 'all') {  // 全部一起显示
       PAGES.forEach(function (p) {
@@ -381,6 +416,36 @@
     }, 250);
   };
 })();
+
+document.getElementById('c-btn').onclick = function () {
+  var b = this; b.disabled = true;
+  var v = parseInt(document.getElementById('c-days').value || '0', 10);
+  if (isNaN(v) || v < 0) v = 0;
+  var unit = document.getElementById('c-unit').value;
+  var dd = 0, dm = 0;
+  if (unit === 'day')    { dd = v; }
+  if (unit === 'hour')   { dm = v * 60; }
+  if (unit === 'minute') { dm = v; }
+  var body = 'codes=' + encodeURIComponent(document.getElementById('c-codes').value)
+           + '&duration_days=' + dd
+           + '&duration_min=' + dm
+           + '&site_domain=' + encodeURIComponent(document.getElementById('c-site').value)
+           + '&note=' + encodeURIComponent(document.getElementById('c-note').value)
+           + '&max_devices=' + document.getElementById('c-dev').value;
+  fetch('/admin/generate_custom', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      b.disabled = false;
+      if (d.ok) {
+        var txt = '已创建 ' + d.created.length + ' 个卡密：\n' + d.created.join('\n');
+        if (d.skipped && d.skipped.length) txt += '\n\n已存在跳过 ' + d.skipped.length + ' 个：\n' + d.skipped.join('\n');
+        var pre = document.getElementById('c-result');
+        pre.hidden = false; pre.textContent = txt;
+        uiAlert(txt, '创建成功', function () { if (d.created.length) location.reload(); });
+      } else { uiAlert(d.message || '创建失败', '创建失败'); }
+    })
+    .catch(function () { uiAlert('网络错误，请重试', '请求失败'); b.disabled = false; });
+};
 
 document.getElementById('g-btn').onclick = function () {
   var b = this; b.disabled = true;

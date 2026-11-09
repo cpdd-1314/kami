@@ -307,3 +307,11 @@ td.ops a { text-decoration: none; }
 }
 .steps p { font-size: 13px; color: #4a5070; line-height: 1.9; margin: 0; }
 .steps p:first-child { font-size: 14px; color: #1f2340; margin-bottom: 4px; }
+
+/* 自定义卡密输入框 */
+.panel textarea {
+  width: 100%; padding: 10px 12px; border: 1.5px solid #dcdff0; border-radius: 10px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 14px; line-height: 1.7;
+  resize: vertical; outline: none; transition: border-color .2s; background: #fff;
+}
+.panel textarea:focus { border-color: #6366f1; }

@@ -413,6 +413,38 @@ async def generate(
     return {"ok": True, "codes": codes}
 
 
+@app.post("/admin/generate_custom")
+async def generate_custom(
+    kami_session: str | None = Cookie(None),
+    codes: str = Form(""),
+    duration_days: int = Form(0),
+    duration_min: int = Form(0),
+    note: str = Form(""),
+    site_domain: str = Form(""),
+    max_devices: int = Form(1),
+):
+    """自定义卡密：任意内容（123456 / 1a2a / iuahduh），换行、空格或逗号分隔"""
+    if not require_auth(kami_session):
+        return JSONResponse({"ok": False, "message": "未登录"}, status_code=401)
+    import re
+
+    raw = [c for c in re.split(r"[\s,，;；]+", codes or "") if c.strip()]
+    if not raw:
+        return {"ok": False, "message": "请填写至少一个卡密"}
+    if len(raw) > 500:
+        return {"ok": False, "message": "单次最多 500 个"}
+    site_domain = db.normalize_domain(site_domain)
+    if site_domain and not db.site_exists(site_domain):
+        return {"ok": False, "message": f"网站「{site_domain}」尚未接入，请先登记"}
+    duration_days = min(max(duration_days, 0), 3650)
+    duration_min = min(max(duration_min, 0), 3650 * 1440)
+    created, skipped = db.create_custom_cards(
+        raw, duration_days, fix_enc(note), site_domain or None,
+        max_devices=min(max(int(max_devices), 0), 10), duration_min=duration_min,
+    )
+    return {"ok": True, "created": created, "skipped": skipped}
+
+
 @app.post("/admin/extend/{card_id}")
 async def extend(card_id: int, kami_session: str | None = Cookie(None),
                  days: int = Form(0), hours: int = Form(0), minutes: int = Form(0)):

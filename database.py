@@ -146,6 +146,40 @@ def create_cards(count: int, duration_days: int, note: str = "", site_domain: st
     return codes
 
 
+def create_custom_cards(raw_codes=None, duration_days: int = 0, note: str = "",
+                        site_domain: str | None = None, max_devices: int = 1,
+                        duration_min: int = 0):
+    """按用户指定的卡密创建（如 123456、1a2a、iuahduh），大小写不敏感去重。
+    返回 (created: list[str], skipped: list[str])"""
+    conn = get_conn()
+    created, skipped = [], []
+    now = datetime.now().isoformat(timespec="seconds")
+    for raw in (raw_codes or []):
+        code = (raw or "").strip()
+        if not code or len(code) > 64:
+            continue
+        dup = conn.execute(
+            "SELECT 1 FROM cards WHERE code = ? COLLATE NOCASE", (code,)
+        ).fetchone()
+        if dup:
+            skipped.append(code)
+            continue
+        conn.execute(
+            "INSERT INTO cards (code, status, duration_days, duration_min, created_at, site_domain, note, multi_device, max_devices) VALUES (?,?,?,?,?,?,?,?,?)",
+            (code, "unused", max(0, int(duration_days or 0)), max(0, int(duration_min or 0)), now,
+             site_domain, note, 1 if not max_devices else 0, max(0, int(max_devices))),
+        )
+        created.append(code)
+    conn.commit()
+    conn.close()
+    if created:
+        try:
+            import backup; backup.mark_dirty()
+        except Exception:
+            pass
+    return created, skipped
+
+
 def card_duration_min(row) -> int:
     """卡密总有效分钟数（0 = 永久）"""
     days = row["duration_days"] if "duration_days" in row.keys() else 0
@@ -310,9 +344,9 @@ def check_card(code: str, domain: str | None = None, device: str = ""):
 
 
 def verify_card(code: str, user: str = "", domain: str | None = None, device: str = ""):
-    code = (code or "").strip().upper()
+    code = (code or "").strip()
     conn = get_conn()
-    row = conn.execute("SELECT * FROM cards WHERE code=?", (code,)).fetchone()
+    row = conn.execute("SELECT * FROM cards WHERE code = ? COLLATE NOCASE", (code,)).fetchone()
     if not row:
         conn.close()
         return False, "卡密无效", None, "invalid"
