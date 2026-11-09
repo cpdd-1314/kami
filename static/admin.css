@@ -22,6 +22,15 @@ body {
 .gen-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
 .gen-row label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #5a5f7d; }
 .gen-row input { padding: 8px 10px; border: 1.5px solid #dcdff0; border-radius: 8px; font-size: 14px; width: 140px; }
+/* 有效期：数字 + 单位并排，与其他控件同高 */
+.gen-row .pair { display: flex; gap: 6px; }
+.gen-row .pair input { width: 96px; }
+.gen-row select {
+  padding: 8px 10px; border: 1.5px solid #dcdff0; border-radius: 8px;
+  font-size: 14px; background: #fff; color: #1f2340; cursor: pointer;
+  min-width: 128px; height: 38px;
+}
+.gen-row .pair select { min-width: 118px; }
 .gen-row button, .filter-row button {
   padding: 9px 20px; border: none; border-radius: 8px; cursor: pointer; font-size: 14px;
   background: linear-gradient(135deg, #6366f1, #a855f7); color: #fff;
@@ -32,16 +41,37 @@ body {
 .filter-row select, .filter-row input { padding: 8px 10px; border: 1.5px solid #dcdff0; border-radius: 8px; font-size: 14px; }
 .filter-row input { flex: 1; max-width: 300px; }
 
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid #eef0f8; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: auto; }
+th, td {
+  padding: 10px 12px; text-align: left; border-bottom: 1px solid #eef0f8;
+  vertical-align: middle;
+}
+/* 短信息列不换行；长文本列省略号，保证 9 列在窄屏也能一屏看全 */
+th { white-space: nowrap; }
+td.col-tight { white-space: nowrap; }
+td.site-cell {
+  max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 卡密主信息 + 下方灰色副信息（备注 / 设备） */
+td.code-cell { min-width: 170px; white-space: nowrap; }
+td.code-cell .sub {
+  color: #9aa0b8; font-size: 12px; margin-top: 2px;
+  max-width: 200px; overflow: hidden; text-overflow: ellipsis;
+}
+td.col-tight .sub { color: #9aa0b8; font-size: 12px; margin-top: 2px; }
+/* 操作列留足按钮宽度，避免被挤成一条缝 */
+
 th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
-.code { font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; }
-.tag { padding: 3px 10px; border-radius: 20px; font-size: 12px; }
+.code { font-family: ui-monospace, Consolas, monospace; letter-spacing: 1px; white-space: nowrap; }
+.tag {
+  display: inline-block; white-space: nowrap; line-height: 1.5;
+  padding: 3px 10px; border-radius: 20px; font-size: 12px;
+}
 .tag-unused { background: #dcfce7; color: #15803d; }
 .tag-used { background: #dbeafe; color: #1d4ed8; }
 .tag-expired { background: #fee2e2; color: #b91c1c; }
-.ext { background: #e0e7ff; color: #4338ca; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 4px; }
-.del { background: #fee2e2; color: #b91c1c; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.ext { background: #e0e7ff; color: #4338ca; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; margin-right: 4px; white-space: nowrap; }
+.del { background: #fee2e2; color: #b91c1c; border: none; padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; white-space: nowrap; }
 .empty { color: #8a8fa8; text-align: center; padding: 24px; }
 .panel code { background: #f1f2fb; padding: 2px 8px; border-radius: 6px; font-size: 12px; }
 
@@ -74,9 +104,17 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
 .drawer a i { font-style: normal; font-size: 16px; width: 20px; text-align: center; }
 .drawer a.danger { color: #dc2626; }
 
-/* 表格横向滚动，杜绝手机溢出 */
+/* 表格：固定列宽 + 横向滚动，任何宽度下都不会挤压或截断 */
 .table-scroll { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.table-scroll table { min-width: 660px; }
+.table-scroll table { table-layout: fixed; min-width: 720px; }
+.table-scroll th, .table-scroll td { overflow: hidden; text-overflow: ellipsis; }
+.table-scroll th:nth-child(1), .table-scroll td:nth-child(1) { width: 24%; }
+.table-scroll th:nth-child(2), .table-scroll td:nth-child(2) { width: 11%; }
+.table-scroll th:nth-child(3), .table-scroll td:nth-child(3) { width: 8%; }
+.table-scroll th:nth-child(4), .table-scroll td:nth-child(4) { width: 18%; }
+.table-scroll th:nth-child(5), .table-scroll td:nth-child(5) { width: 14%; }
+.table-scroll th:nth-child(6), .table-scroll td:nth-child(6) { width: 10%; }
+.table-scroll th:nth-child(7), .table-scroll td:nth-child(7) { width: 15%; min-width: 120px; }
 
 /* ===== 页面切换：左侧功能按钮 ===== */
 .drawer a.active { background: #eef2ff; color: #2563eb; font-weight: 600; }
@@ -109,12 +147,16 @@ th { color: #8a8fa8; font-weight: 600; background: #fafbff; }
   .gen-row { flex-direction: column; align-items: stretch; gap: 10px; }
   .gen-row label { width: 100%; }
   .gen-row input { width: 100%; box-sizing: border-box; font-size: 16px; }
+  .gen-row select { width: 100%; font-size: 16px; }
+  .gen-row .pair input { width: 45%; }
+  .gen-row .pair select { width: 55%; min-width: 0; }
   .gen-row button { width: 100%; padding: 12px; font-size: 15px; }
   .filter-row { flex-wrap: wrap; gap: 8px; }
   .filter-row select, .filter-row input { font-size: 16px; }
   .filter-row input { flex: 1 1 100%; max-width: none; }
   .filter-row button { flex: 1 1 100%; padding: 11px; }
-  th, td { padding: 8px 8px; font-size: 12.5px; white-space: nowrap; }
+  th, td { padding: 8px; font-size: 12.5px; white-space: nowrap; }
+  .tag { padding: 2px 7px; font-size: 11.5px; }
   .del, .ext, .sitelink, .delsite, .themebtn { padding: 6px 10px !important; font-size: 12px !important; }
 }
 
@@ -315,3 +357,16 @@ td.ops a { text-decoration: none; }
   resize: vertical; outline: none; transition: border-color .2s; background: #fff;
 }
 .panel textarea:focus { border-color: #6366f1; }
+
+/* 到期时间旁的剩余时长 / 长备注截断 */
+.muted { color: #9aa0b8; font-size: 12px; margin-left: 4px; }
+
+
+/* 手机上提示表格可左右滑动 */
+.scroll-hint { display: none; }
+@media (max-width: 720px) {
+  .scroll-hint { display: block; text-align: center; color: #9aa0b8; font-size: 12px; margin: 10px 0 0; }
+}
+
+/* 设备限制下拉文案较长，单独加宽避免省略 */
+#g-dev, #c-dev { min-width: 186px; }

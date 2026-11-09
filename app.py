@@ -76,9 +76,44 @@ def check_rate(ip: str) -> bool:
     return True
 
 
+def fmt_time(s: str | None) -> str:
+    """2026-11-09T17:37:31 → 2026-11-09 17:37"""
+    if not s:
+        return ""
+    try:
+        return datetime.fromisoformat(s).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return s
+
+
 def card_view(r: dict) -> dict:
     st = "已过期" if r["is_expired"] else ("已使用" if r["status"] == "used" else "未使用")
-    return {**r, "status_text": st, "duration_text": db.duration_text(r["duration_days"], r.get("duration_min", 0))}
+    expire_at = r["expire_at"]
+    remain = ""
+    if r["status"] == "used" and expire_at:
+        if r["is_expired"]:
+            remain = "已过期"
+        else:
+            try:
+                total_min = int((datetime.fromisoformat(expire_at) - datetime.now()).total_seconds() // 60)
+                d, rest = divmod(max(total_min, 0), 1440)
+                h, m = divmod(rest, 60)
+                remain = "剩 " + (f"{d} 天 " if d else "") + (f"{h} 小时 " if h else "") + (f"{m} 分" if m or (not d and not h) else "")
+                remain = remain.strip()
+            except ValueError:
+                remain = ""
+    elif r["status"] == "unused":
+        remain = "未激活"
+    else:
+        remain = "永久"
+    return {
+        **r,
+        "status_text": st,
+        "duration_text": db.duration_text(r["duration_days"], r.get("duration_min", 0)),
+        "expire_text": fmt_time(expire_at),
+        "used_text": fmt_time(r["used_at"]),
+        "remain_text": remain,
+    }
 
 
 # ---------------- 用户端 ----------------
